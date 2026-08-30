@@ -1,9 +1,7 @@
-# CI template for a tui-tools tool.
+# CI for tui-logs, from the family's shared template.
 #
-# Copy to .github/workflows/ci.yml in the tool's repository and replace every
-# tui-template with the tool name. It runs the same checks `make check` runs
-# locally, cross-compiles for both release targets, and on a `v*` tag lets
-# GoReleaser publish the binaries.
+# It runs the same checks `make check` runs locally, cross-compiles for both
+# release targets, and on a `v*` tag lets GoReleaser publish the binaries.
 name: CI
 
 on:
@@ -79,7 +77,7 @@ jobs:
         run: go test -race ./...
 
       - name: build
-        run: CGO_ENABLED=0 go build -trimpath -o /tmp/tui-template ./cmd/tui-template
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/tui-logs ./cmd/tui-logs
 
       - name: verify go.mod is tidy
         run: |
@@ -107,7 +105,7 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: linux
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -o "/tmp/tui-template_${GOARCH}" ./cmd/tui-template
+        run: go build -trimpath -o "/tmp/tui-logs_${GOARCH}" ./cmd/tui-logs
 
   manifest:
     name: validate tool.json
@@ -171,4 +169,4 @@ jobs:
         run: |
           gh api repos/tui-tools/tui-tools.github.io/dispatches \
             -f event_type=tool-released \
-            -f 'client_payload[tool]=tui-template'
+            -f 'client_payload[tool]=tui-logs'

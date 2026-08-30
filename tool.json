@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "name": "tui-template",
-  "binary": "tui-template",
-  "tagline": "A working skeleton for a new tui-tools tool",
-  "description": "The starting point for a new tool in the family. Press **Use this template**, rename it, replace one package, and you have a tool that looks and behaves like the rest.\n\nIt is not a pile of TODOs: it is a working tool. It lists the files in a directory and can update a file's timestamp, which is deliberately trivial — what matters is the shape around it, and that shape is already correct: the action table that generates the key map, the help screen and the confirm dialog; the backend interface with a real and a fake implementation; `--demo`; CI; and GoReleaser.\n\nThis `tool.json` is itself the example. It is a valid manifest, validated against [the schema](https://github.com/tui-tools/tui-kit/blob/main/schema/tool.schema.json) on every CI run, and the values are the ones you replace.",
-  "category": "template",
-  "homepage": "https://github.com/tui-tools/tui-template",
-  "repo": "https://github.com/tui-tools/tui-template",
+  "name": "tui-logs",
+  "binary": "tui-logs",
+  "tagline": "The journal on one screen: narrow it, follow it, and shrink it safely",
+  "description": "A terminal UI for the systemd journal. Every filter it offers is a journalctl argument — unit, priority, boot, time window, `--grep`, kernel only, the user journal — and the command line they add up to is on the status bar, so what you are looking at is always something you could have typed.\n\nPress enter on a line and you get the record rather than the sentence: the pid, the uid, the executable and its command line, the source file and line for a program that logs through sd-journal, the MESSAGE_ID with a name for the well-known ones, and every other field the journal happened to carry. There is no clipboard to copy it with, so the screen shows the `journalctl --cursor` invocation that prints that entry instead.\n\nA second screen counts the window on show: errors, the noisiest units, a sparkline. A third says what the journal costs, whether it survives a reboot, and what journald.conf resolves to.\n\nHousekeeping is four commands, each previewed and confirmed: vacuum by size, vacuum by age, rotate, verify. Nothing else here writes anything.\n\nRun `tui-logs --demo` to drive a sample journal: every key works, every command is built and previewed for real, and nothing touches your system.",
+  "category": "logs",
+  "homepage": "https://github.com/tui-tools/tui-logs",
+  "repo": "https://github.com/tui-tools/tui-logs",
   "license": "MIT",
   "platforms": [
     "linux/amd64",
@@ -16,30 +16,78 @@
   "logo": "assets/logo.png",
   "screenshots": [
     {
-      "path": "docs/screenshots/tui-template-main.png",
-      "caption": "The list: the four bands every tool in the family draws"
+      "path": "docs/screenshots/tui-logs-main.png",
+      "caption": "The journal, with the journalctl command behind what is on screen along the bottom"
     },
     {
-      "path": "docs/screenshots/tui-template-touch.png",
-      "caption": "The confirm dialog, showing the exact command line before it runs"
+      "path": "docs/screenshots/tui-logs-detail.png",
+      "caption": "One entry in full: every field the journal carried, and the command that prints it again"
     },
     {
-      "path": "docs/screenshots/tui-template-help.png",
-      "caption": "The help screen, generated from the action table"
+      "path": "docs/screenshots/tui-logs-stats.png",
+      "caption": "The window, counted: errors, the noisiest units, and a sparkline of errors over the period"
+    },
+    {
+      "path": "docs/screenshots/tui-logs-storage.png",
+      "caption": "What the journal costs, whether it survives a reboot, and the journald.conf in force"
+    },
+    {
+      "path": "docs/screenshots/tui-logs-vacuum.png",
+      "caption": "Shrinking the journal: the exact command, and what it removes, before anything runs"
+    },
+    {
+      "path": "docs/screenshots/tui-logs-help.png",
+      "caption": "The help screen, generated from the same key table as the hint bar"
     }
   ],
   "keys": [
     {
-      "key": "t",
-      "action": "Touch the selected file"
+      "key": "tab / 1-3",
+      "action": "Move between the entries, the stats for the window and the journal on disk"
+    },
+    {
+      "key": "enter",
+      "action": "Open the selected entry with every field it carries"
+    },
+    {
+      "key": "f",
+      "action": "Follow: re-read what is new every two seconds"
+    },
+    {
+      "key": "u / p / b / t",
+      "action": "Filter by unit, priority, boot or time window"
     },
     {
       "key": "/",
-      "action": "Filter the list"
+      "action": "Search the journal itself with --grep, not the rows on screen"
     },
     {
-      "key": "r / ctrl+r",
-      "action": "Re-read the directory"
+      "key": "K / U",
+      "action": "Kernel messages only, or your own user journal instead of the system one"
+    },
+    {
+      "key": "c",
+      "action": "Clear every filter"
+    },
+    {
+      "key": "x",
+      "action": "Export the window to a file under your home directory"
+    },
+    {
+      "key": "v / V",
+      "action": "Vacuum the journal by size or by age, previewed first"
+    },
+    {
+      "key": "o",
+      "action": "Rotate: close the active journal files, delete nothing"
+    },
+    {
+      "key": "y",
+      "action": "Verify every journal file's internal consistency"
+    },
+    {
+      "key": "R",
+      "action": "Re-read everything"
     },
     {
       "key": "?",
@@ -52,84 +100,110 @@
   ],
   "backends": [
     {
-      "name": "coreutils",
-      "binary": "touch",
+      "name": "journald",
+      "binary": "journalctl",
       "versionCommand": [
-        "touch",
+        "journalctl",
         "--version"
       ],
-      "versionRegex": "coreutils\\) ([0-9][0-9.]*)",
-      "minimum": "8.0",
+      "versionRegex": "systemd (\\d+)",
+      "minimum": "239",
       "searchPaths": [
-        "/usr/bin/touch",
-        "/bin/touch"
+        "/usr/bin/journalctl",
+        "/bin/journalctl"
       ],
       "features": [
         {
-          "name": "no-dereference",
-          "since": "8.1"
+          "name": "list-boots-json",
+          "since": "252"
         }
       ],
       "notes": [
         {
-          "range": "<8.1",
-          "impact": "`touch -h` is missing, so the timestamp of a symlink is set on its target instead of on the link"
+          "range": ">=239",
+          "impact": "the version comes from `journalctl --version`, whose first line is `systemd 257 (257.13-1.fc42)`; the first number is the release and the package version after it is ignored"
+        },
+        {
+          "range": ">=239",
+          "impact": "only one thing here is version-gated. `--grep` (237), `--after-cursor` (206) and `systemd-analyze cat-config` (239) all exist at or below the minimum, so they are never checked for"
+        },
+        {
+          "range": "<252",
+          "impact": "`journalctl --list-boots` cannot print JSON, so the boot list is parsed from its table instead; the picker works either way and nothing else changes"
         }
-      ]
+      ],
+      "tested": []
     }
   ],
   "install": {
-    "source": {
-      "available": true,
-      "command": "git clone https://github.com/tui-tools/tui-template\ncd tui-template && make demo",
-      "url": "https://github.com/tui-tools/tui-template",
-      "note": "Or press \"Use this template\" on GitHub, which is the point of it."
-    },
     "pacman": {
       "available": false,
-      "package": "tui-template",
+      "package": "tui-logs",
       "repo": "tui-tools",
       "requires_repo_setup": true,
-      "command": "sudo pacman -S tui-template",
+      "command": "sudo pacman -S tui-logs",
       "url": "https://pkgs.tui.tools/arch",
-      "note": "The template is never packaged. This entry shows your tool's shape."
+      "note": "Add the tui-tools repository to pacman.conf first."
+    },
+    "aur": {
+      "available": false,
+      "package": "tui-logs-bin",
+      "repo": "aur",
+      "command": "paru -S tui-logs-bin",
+      "url": "https://aur.archlinux.org/packages/tui-logs-bin",
+      "note": "The -bin package installs the released static binary."
     },
     "apt": {
       "available": false,
-      "package": "tui-template",
+      "package": "tui-logs",
       "repo": "tui-tools",
       "requires_repo_setup": true,
-      "command": "sudo apt install tui-template",
+      "command": "sudo apt install tui-logs",
       "url": "https://pkgs.tui.tools/deb",
-      "note": "The template is never packaged. This entry shows your tool's shape."
+      "note": "Add the tui-tools apt repository and its keyring first."
     },
     "dnf": {
       "available": false,
-      "package": "tui-template",
+      "package": "tui-logs",
       "repo": "tui-tools",
       "requires_repo_setup": true,
-      "command": "sudo dnf install tui-template",
+      "command": "sudo dnf install tui-logs",
       "url": "https://pkgs.tui.tools/rpm",
-      "note": "The template is never packaged. This entry shows your tool's shape."
+      "note": "Add the tui-tools.repo file first."
+    },
+    "zypper": {
+      "available": false,
+      "package": "tui-logs",
+      "repo": "tui-tools",
+      "requires_repo_setup": true,
+      "command": "sudo zypper install tui-logs",
+      "url": "https://pkgs.tui.tools/rpm",
+      "note": "Add the tui-tools repository first."
     },
     "binary": {
-      "available": false,
-      "pattern": "tui-template_{version}_linux_{arch}.tar.gz",
-      "command": "curl -fsSL https://github.com/tui-tools/tui-template/releases/download/v{version}/tui-template_{version}_linux_{arch}.tar.gz | tar -xz tui-template\nsudo install -m0755 tui-template /usr/local/bin/tui-template",
-      "url": "https://github.com/tui-tools/tui-template/releases",
-      "note": "The template is never released. Your tool is, once you tag v0.1.0."
+      "available": true,
+      "pattern": "tui-logs_{version}_linux_{arch}.tar.gz",
+      "command": "curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v{version}/tui-logs_{version}_linux_{arch}.tar.gz | tar -xz tui-logs\nsudo install -m0755 tui-logs /usr/local/bin/tui-logs",
+      "url": "https://github.com/tui-tools/tui-logs/releases",
+      "note": "One static binary. Verify it against checksums.txt from the same release."
+    },
+    "source": {
+      "available": true,
+      "command": "git clone https://github.com/tui-tools/tui-logs\ncd tui-logs && make build\nsudo install -m0755 bin/tui-logs /usr/local/bin/tui-logs",
+      "url": "https://github.com/tui-tools/tui-logs",
+      "note": "Needs Go 1.27 or newer."
     }
   },
   "security": {
-    "needs_sudo": "Only the touch action escalates, and only when the configured prefix is non-empty. Listing a directory is an ordinary read. Replace this sentence with what your own tool escalates for.",
+    "needs_sudo": "Reading the system journal needs membership of systemd-journal, adm or wheel — no escalation at all. Only a machine that refuses that read retries it through `sudo -n`, which never prompts, and the header says which of the two you are looking at. The four housekeeping commands always escalate.",
     "preview_before_run": true,
     "no_daemon": true,
     "no_network": true,
     "static_binary": true,
     "signed_releases": false,
     "config_paths": [
-      "/etc/tui-template/config.toml",
-      "~/.config/tui-template/config.toml"
+      "/etc/tui-logs/config.toml",
+      "~/.config/tui-logs/config.toml"
     ]
   },
   "maintainers": [
@@ -138,12 +212,17 @@
       "github": "edimarlnx"
     }
   ],
-  "since": "2026-08-29",
+  "since": "2026-08-30",
   "keywords": [
-    "template",
-    "scaffold",
-    "bubbletea",
-    "starter"
-  ],
-  "unreleased": true
+    "logs",
+    "journal",
+    "journalctl",
+    "journald",
+    "systemd",
+    "syslog",
+    "troubleshooting",
+    "vacuum",
+    "tui",
+    "bubbletea"
+  ]
 }

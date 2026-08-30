@@ -1,0 +1,7 @@
+{"__CURSOR":"s=1;i=1;b=aa;m=1;t=1","__REALTIME_TIMESTAMP":"1788060000000000","PRIORITY":"6","SYSLOG_IDENTIFIER":"plain","MESSAGE":"an ordinary string message","_PID":"101","_UID":"0","_TRANSPORT":"journal"}
+{"__CURSOR":"s=1;i=2;b=aa;m=2;t=2","__REALTIME_TIMESTAMP":"1788060001000000","PRIORITY":"3","SYSLOG_IDENTIFIER":"binary","MESSAGE":[104,105,9,116,104,101,114,101,7],"_PID":"102","_TRANSPORT":"journal"}
+{"__CURSOR":"s=1;i=3;b=aa;m=3;t=3","__REALTIME_TIMESTAMP":"1788060002000000","PRIORITY":"4","SYSLOG_IDENTIFIER":"repeated","MESSAGE":"a repeated field follows","ENV":["one","two"],"_PID":"103","_TRANSPORT":"journal"}
+{"__CURSOR":"s=1;i=4;b=aa;m=4;t=4","__REALTIME_TIMESTAMP":"1788060003000000","SYSLOG_IDENTIFIER":"nopriority","MESSAGE":"no PRIORITY at all","_TRANSPORT":"journal"}
+{"__CURSOR":"s=1;i=5;b=aa;m=5;t=5","__REALTIME_TIMESTAMP":"1788060004000000","PRIORITY":"6","_SYSTEMD_USER_UNIT":"app.service","_SYSTEMD_UNIT":"user@1000.service","SYSLOG_IDENTIFIER":"app","MESSAGE":"from a user service","_PID":"105","_UID":"1000","_TRANSPORT":"journal"}
+this line is not JSON at all and must be skipped
+{"__CURSOR":"s=1;i=6;b=aa;m=6;t=6","__REALTIME_TIMESTAMP":"1788060005000000","PRIORITY":"7","SYSLOG_IDENTIFIER":"debug","MESSAGE":"the newest entry","_PID":"106","_TRANSPORT":"journal"}

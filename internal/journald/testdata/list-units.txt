@@ -1,0 +1,40 @@
+boot.automount                                                                                                                      not-found inactive dead      boot.automount
+proc-sys-fs-binfmt_misc.automount                                                                                                   loaded    active   running   Arbitrary Executable File Formats File System Automount Point
+dev-disk-by\x2ddiskseq-1.device                                                                                                     loaded    active   plugged   XPG GAMMIX S70 BLADE
+dev-disk-by\x2ddiskseq-10.device                                                                                                    loaded    active   plugged   /dev/disk/by-diskseq/10
+dev-disk-by\x2ddiskseq-12.device                                                                                                    loaded    active   plugged   /dev/disk/by-diskseq/12
+dev-disk-by\x2ddiskseq-14.device                                                                                                    loaded    active   plugged   /dev/disk/by-diskseq/14
+dev-disk-by\x2ddiskseq-16.device                                                                                                    loaded    active   plugged   /dev/disk/by-diskseq/16
+dev-disk-by\x2ddiskseq-1\x2dpart1.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE Basic\x20data\x20partition
+dev-disk-by\x2ddiskseq-1\x2dpart2.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE Microsoft\x20reserved\x20partition
+dev-disk-by\x2ddiskseq-1\x2dpart3.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE Basic\x20data\x20partition
+dev-disk-by\x2ddiskseq-1\x2dpart4.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE 4
+dev-disk-by\x2ddiskseq-1\x2dpart5.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE EFI\x20System\x20Partition
+dev-disk-by\x2ddiskseq-1\x2dpart6.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE 6
+dev-disk-by\x2ddiskseq-1\x2dpart7.device                                                                                            loaded    active   plugged   XPG GAMMIX S70 BLADE 7
+dev-disk-by\x2ddiskseq-2.device                                                                                                     loaded    active   plugged   TEAM TM8FP6002T
+dev-disk-by\x2ddiskseq-2\x2dpart1.device                                                                                            loaded    active   plugged   TEAM TM8FP6002T 1
+dev-disk-by\x2ddiskseq-2\x2dpart2.device                                                                                            loaded    active   plugged   TEAM TM8FP6002T ntfs_data
+dev-disk-by\x2ddiskseq-3.device                                                                                                     loaded    active   plugged   /dev/disk/by-diskseq/3
+dev-disk-by\x2ddiskseq-5.device                                                                                                     loaded    active   plugged   STORAGE_DEVICE
+dev-disk-by\x2ddiskseq-6.device                                                                                                     loaded    active   plugged   /dev/disk/by-diskseq/6
+dev-disk-by\x2did-dm\x2dname\x2dhome.device                                                                                         loaded    active   plugged   /dev/disk/by-id/dm-name-home
+dev-disk-by\x2did-dm\x2duuid\x2dCRYPT\x2dLUKS2\x2d03fa56b48a7d4d2f8e20be305cf5d5a7\x2dhome.device                                   loaded    active   plugged   /dev/disk/by-id/dm-uuid-CRYPT-LUKS2-03fa56b48a7d4d2f8e20be305cf5d5a7-home
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098.device                                                               loaded    active   plugged   XPG GAMMIX S70 BLADE
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart1.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE Basic\x20data\x20partition
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart2.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE Microsoft\x20reserved\x20partition
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart3.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE Basic\x20data\x20partition
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart4.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE 4
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart5.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE EFI\x20System\x20Partition
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart6.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE 6
+dev-disk-by\x2did-nvme\x2deui.0000000000000000707c182cafb74098\x2dpart7.device                                                      loaded    active   plugged   XPG GAMMIX S70 BLADE 7
+dev-disk-by\x2did-nvme\x2dnvme.10ec\x2d313132313035303530313930363135\x2d5445414d20544d3846503630303254\x2d00000001.device          loaded    active   plugged   TEAM TM8FP6002T
+dev-disk-by\x2did-nvme\x2dnvme.10ec\x2d313132313035303530313930363135\x2d5445414d20544d3846503630303254\x2d00000001\x2dpart1.device loaded    active   plugged   TEAM TM8FP6002T 1
+dev-disk-by\x2did-nvme\x2dnvme.10ec\x2d313132313035303530313930363135\x2d5445414d20544d3846503630303254\x2d00000001\x2dpart2.device loaded    active   plugged   TEAM TM8FP6002T ntfs_data
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615.device                                                                    loaded    active   plugged   TEAM TM8FP6002T
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615\x2dpart1.device                                                           loaded    active   plugged   TEAM TM8FP6002T 1
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615\x2dpart2.device                                                           loaded    active   plugged   TEAM TM8FP6002T ntfs_data
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615_1.device                                                                  loaded    active   plugged   TEAM TM8FP6002T
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615_1\x2dpart1.device                                                         loaded    active   plugged   TEAM TM8FP6002T 1
+dev-disk-by\x2did-nvme\x2dTEAM_TM8FP6002T_112105050190615_1\x2dpart2.device                                                         loaded    active   plugged   TEAM TM8FP6002T ntfs_data
+dev-disk-by\x2did-nvme\x2dXPG_GAMMIX_S70_BLADE_2O032LACB8DR.device                                                                  loaded    active   plugged   XPG GAMMIX S70 BLADE

@@ -1,20 +1,25 @@
-# tui-template configuration.
+# tui-logs configuration.
 #
-# Read from /etc/tui-template/config.toml first, then
-# ~/.config/tui-template/config.toml, with the user file overriding the
-# machine-wide one. TUI_TEMPLATE_* environment variables override both, and
-# command line flags override everything.
+# Read from /etc/tui-logs/config.toml first, then ~/.config/tui-logs/config.toml,
+# with the user file overriding the machine-wide one. TUI_LOGS_* environment
+# variables override both, and command line flags override everything.
 
-# This tool's own key: the directory to list. Replace it with yours.
-dir = "."
-
-# Privilege escalation prefix used for actions; "" runs the command directly.
+# Privilege escalation prefix used for the housekeeping commands, and for the
+# journal read on a machine that refuses the plain one; "" runs the command
+# directly. Reading the journal needs no escalation at all when the account is
+# in systemd-journal, adm or wheel.
 sudo = "sudo -n"
 
 # Path to an Omarchy-style colors.toml. Empty follows the active Omarchy
 # theme when present, and falls back to the built-in Tokyo Night palette.
 theme = ""
 
+# How many entries one read pulls back (journalctl -n). The journal on a busy
+# machine is millions of entries and a screen shows tens; a larger window makes
+# the stats screen cover more and every keystroke cost more.
+lines = 500
+
 # Every key can also be set in the environment, upper-cased and prefixed:
-#   TUI_TEMPLATE_DIR=/srv
-#   TUI_TEMPLATE_SUDO="doas"
+#   TUI_LOGS_SUDO="doas -n"
+#   TUI_LOGS_LINES=2000
+#   TUI_LOGS_THEME=/etc/tui/colors.toml
