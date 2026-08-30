@@ -119,6 +119,44 @@ func TestParseEntriesHandlesEveryFieldShape(t *testing.T) {
 	}
 }
 
+// TestTheBootListShapeIsTheSameOnEveryTestedSystemd pins the two ends of the
+// range the lab runs. `--list-boots -o json` was the one read in this tool
+// gated on a systemd version, so the shape it answers with on the oldest and
+// newest systemd anyone has run this against is worth having on disk rather
+// than assumed: both fixtures were captured from a real guest, systemd 255 on
+// Ubuntu 24.04 and 261 on Omarchy Server 4.0.1, and they are byte-identical in
+// structure — four keys, same names, same types. If a future release adds or
+// renames one, this is where it surfaces.
+func TestTheBootListShapeIsTheSameOnEveryTestedSystemd(t *testing.T) {
+	for _, name := range []string{
+		"list-boots-json-systemd255.txt",
+		"list-boots-json-systemd261.txt",
+	} {
+		boots := ParseBootsJSON(fixture(t, name))
+		if len(boots) == 0 {
+			t.Fatalf("%s parsed to no boots at all", name)
+		}
+		// The running boot is index 0 and sorts first, which is what the
+		// picker opens on.
+		if boots[0].Index != 0 {
+			t.Errorf("%s: first boot index = %d, want 0", name, boots[0].Index)
+		}
+		for i, boot := range boots {
+			if len(boot.ID) != 32 {
+				t.Errorf("%s: boot %d has id %q, want 32 hex characters",
+					name, i, boot.ID)
+			}
+			if boot.First.IsZero() || boot.Last.IsZero() {
+				t.Errorf("%s: boot %d lost a timestamp (%v..%v)",
+					name, i, boot.First, boot.Last)
+			}
+			if boot.Last.Before(boot.First) {
+				t.Errorf("%s: boot %d ends before it starts", name, i)
+			}
+		}
+	}
+}
+
 func TestBootListsAgreeWhicheverFormatWasRead(t *testing.T) {
 	fromJSON := ParseBootsJSON(fixture(t, "list-boots-json.txt"))
 	fromTable := ParseBootsTable(fixture(t, "list-boots-table.txt"))

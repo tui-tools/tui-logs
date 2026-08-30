@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -156,15 +157,40 @@ func TestNotesApplyToTheRangesTheyClaim(t *testing.T) {
 
 // TestTestedVersionsAreBackedByEvidence: the manifest's tested list is
 // generated from compat/results.jsonl and must never be edited by hand.
+//
+// The evidence is decoded rather than substring-matched. The first version of
+// this test looked for `"version":"255"` in the raw file, which the generator
+// never writes — it separates key from value with a space — so the assertion
+// could only ever pass while the tested list was empty, and it was: this tool
+// had never been near a real machine. The first lab run filled the list in and
+// the test failed on three versions that are in the file, spelled differently.
 func TestTestedVersionsAreBackedByEvidence(t *testing.T) {
 	b := backend(t)
 	raw, err := os.ReadFile(filepath.Join("..", "..", "compat", "results.jsonl"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read compat/results.jsonl: %v", err)
 	}
-	evidence := string(raw)
+
+	recorded := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var result struct {
+			Version string `json:"version"`
+			Backend string `json:"backend"`
+		}
+		if err := json.Unmarshal([]byte(line), &result); err != nil {
+			t.Errorf("compat/results.jsonl has a line that is not JSON: %v", err)
+			continue
+		}
+		if result.Backend == b.Name {
+			recorded[result.Version] = true
+		}
+	}
+
 	for _, version := range b.Tested {
-		if !strings.Contains(evidence, `"version":"`+version+`"`) {
+		if !recorded[version] {
 			t.Errorf("the manifest claims %s was tested, and nothing in "+
 				"compat/results.jsonl says so", version)
 		}

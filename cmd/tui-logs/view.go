@@ -144,7 +144,16 @@ func (a *app) headerView() string {
 		facts = append(facts, ui.CompatFact(t, a.backendCompat))
 	}
 
-	return ui.Header{Title: "tui-logs", Subtitle: a.filter.Label(), Facts: facts}.
+	// The backend leads the subtitle, the filter follows it. Which journal is
+	// on screen is the more important of the two facts, and it is the one the
+	// rest of the family puts here: a demo renders entries that look exactly
+	// like a real machine's, so a header that named only the filter left the
+	// screen with nothing on it to say the journal was invented.
+	subtitle := a.backend.Describe()
+	if label := a.filter.Label(); label != "" {
+		subtitle += "  ·  " + label
+	}
+	return ui.Header{Title: "tui-logs", Subtitle: subtitle, Facts: facts}.
 		Render(t, a.width)
 }
 

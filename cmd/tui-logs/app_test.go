@@ -393,6 +393,23 @@ func TestVacuumingMovesTheNumberInTheHeader(t *testing.T) {
 	}
 }
 
+// TestTheHeaderNamesTheJournalOnScreen: the subtitle carries the backend's own
+// description, so a demo says it is one. The lab found this: --demo rendered a
+// frame indistinguishable from a real machine's, because the subtitle held the
+// filter alone and nothing on screen said the entries were invented.
+func TestTheHeaderNamesTheJournalOnScreen(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.width, a.height = 120, 40
+	header := a.headerView()
+	if !strings.Contains(header, "demo") {
+		t.Errorf("the header of a demo run does not say so: %q", header)
+	}
+	// And the filter it replaced is still there.
+	if !strings.Contains(header, a.filter.Label()) {
+		t.Errorf("the header dropped the filter %q: %q", a.filter.Label(), header)
+	}
+}
+
 func TestStatsCountTheWindowAndSayWhichWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	drain(t, a, press(a, "2"))

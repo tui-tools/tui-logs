@@ -25,7 +25,7 @@ you could not have typed.
 ### Any distribution, static binary
 
 ```sh
-curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v{version}/tui-logs_{version}_linux_amd64.tar.gz | tar -xz tui-logs
+curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v0.1.0/tui-logs_0.1.0_linux_amd64.tar.gz | tar -xz tui-logs
 sudo install -m0755 tui-logs /usr/local/bin/tui-logs
 ```
 
@@ -427,7 +427,7 @@ hidden; one below the minimum is marked as such and the tool still runs.
 | Binary | `journalctl` |
 | Version read with | `journalctl --version` |
 | Minimum | 239 |
-| Tested | none yet |
+| Tested | `255`, `259`, `261` |
 | Version-gated features | `list-boots-json` (since 252) |
 
 | Versions | What changes |

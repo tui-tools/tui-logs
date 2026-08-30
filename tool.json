@@ -132,7 +132,11 @@
           "impact": "`journalctl --list-boots` cannot print JSON, so the boot list is parsed from its table instead; the picker works either way and nothing else changes"
         }
       ],
-      "tested": []
+      "tested": [
+        "255",
+        "259",
+        "261"
+      ]
     }
   ],
   "install": {
