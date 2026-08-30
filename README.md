@@ -1,5 +1,7 @@
 <img src="assets/logo.png" alt="tui-logs" width="240">
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tui-tools/tui-logs/badge)](https://scorecard.dev/viewer/?uri=github.com/tui-tools/tui-logs)
+
 A terminal UI for the systemd journal. Every filter it offers is a `journalctl`
 argument, **the command they add up to is on the status bar**, and every change
 to the journal is previewed before it runs.
