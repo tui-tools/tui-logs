@@ -130,6 +130,39 @@ fi
 
 report=$("$bin" --check 2>/dev/null)
 
+# --- the report block ------------------------------------------------------
+#
+# --report is read-only and unprivileged, so it is smoked without sudo: a user
+# whose account cannot open the system journal is exactly the one who most
+# needs to be able to file a usable bug. What is asserted is that it agrees
+# with the backend this machine drives, that it still answers under --demo, and
+# that it keeps its privacy promise — the block goes into a public issue, so a
+# home path or the host name appearing in it is a bug, not a cosmetic detail.
+check "report names the backend it drives" \
+  "$bin --report" \
+  '^backend: journald'
+
+check "report says the run was live" \
+  "$bin --report" \
+  '^mode: live$'
+
+check "report works in demo mode too" \
+  "$bin --demo --report" \
+  '^backend: demo$'
+
+check "and says so on the mode line" \
+  "$bin --demo --report" \
+  '^mode: demo'
+
+# The distro and kernel lines are excluded from the host-name search rather
+# than from the promise: they are built from /etc/os-release and from uname's
+# release and machine fields, never from its nodename, and on a guest called
+# "fedora" or "ubuntu" — which is most of them — the host name is a substring
+# of the distribution's own. Everything else in the block is searched.
+check "report leaks neither a home path nor the host name" \
+  "$bin --report | grep -vE '^(distro|kernel): ' | grep -cE '/home/|$(uname -n)' || true" \
+  '^0$'
+
 # 1. The read path works at all and names the backend it drove.
 check "check reads the journal" \
   "$bin --check" \

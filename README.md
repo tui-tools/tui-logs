@@ -351,6 +351,7 @@ than useless.
 tui-logs                       # the machine's journal
 tui-logs --demo                # sample journal, no privileges needed
 tui-logs --check               # read it, print JSON, exit
+tui-logs --report              # print what a bug report needs, exit
 tui-logs --lines 2000          # a wider window
 tui-logs --theme ~/mytheme/colors.toml
 tui-logs --sudo ""             # run the commands directly (as root)
@@ -393,6 +394,45 @@ opened, that the tool said so instead of showing an empty screen.
 [tui-lab](https://github.com/tui-tools/tui-lab) uses it to test this tool
 against real machines on Ubuntu, Fedora and Arch; the assertions live in
 [`test/smoke.sh`](test/smoke.sh), and every one of them is read-only.
+
+### `--report`, for bug reports
+
+`--report` prints, in one block, everything a maintainer has to ask for
+otherwise: the tool and kit versions, the systemd the version probe read, which
+of the two boot-list parsers that version selects, how wide a window one read
+pulls back, the distribution, the kernel, the terminal, the theme, the
+escalation prefix, and whether the running binary came from a package. It needs
+no privileges and reads no journal, so it works on the machine where the bug is
+— including one with no journalctl at all, which is itself a thing worth
+reporting.
+
+```console
+$ tui-logs --report
+tui-logs 0.1.0 (kit v0.2.9)
+backend: journald 257
+mode: live
+distro: fedora 42 (Fedora Linux 42 (Workstation Edition))
+kernel: 6.19.14-108.fc42.x86_64
+arch: x86_64
+locale: en_US.UTF-8
+term: xterm-256color
+theme: tokyo-night
+sudo: sudo -n
+root: no
+binary: /usr/bin/tui-logs (packaged)
+boot list: json
+lines: 500
+```
+
+The block is written to be published as it is: it carries no hostname, user
+name, home path or address, and no environment variable beyond `LANG`,
+`LC_ALL`, `TERM` and `TERM_PROGRAM`. A binary living under your home directory
+is reported as being there without naming the path. Nothing about the journal
+itself is in it — not an entry, not a unit name, not a count. `--report` works
+with `--demo` too, where it says so on the `mode` line.
+
+The bug form asks for this block first — see
+[`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml).
 
 ## What it can do to your machine
 
