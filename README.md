@@ -2,6 +2,10 @@
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tui-tools/tui-logs/badge)](https://scorecard.dev/viewer/?uri=github.com/tui-tools/tui-logs)
 
+> **Beta.** The family is days old and still changing. Package names, flags
+> and keys may move without notice until 1.0. Pin versions, and report what
+> breaks.
+
 A terminal UI for the systemd journal. Every filter it offers is a `journalctl`
 argument, **the command they add up to is on the status bar**, and every change
 to the journal is previewed before it runs.
@@ -124,7 +128,7 @@ Upgrades then arrive with the rest of your system updates.
 ### Any distribution, static binary
 
 ```sh
-curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v0.1.1/tui-logs_0.1.1_linux_amd64.tar.gz | tar -xz tui-logs
+curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v0.1.2/tui-logs_0.1.2_linux_amd64.tar.gz | tar -xz tui-logs
 sudo install -m0755 tui-logs /usr/local/bin/tui-logs
 ```
 
@@ -595,6 +599,15 @@ widgets, the config loader and the command runner shared by the whole family.
   can tell you how many lines and how many bytes are about to be written.
 - `tui-logs` re-reads after every change, so what you see is what the system
   reports, not what the tool assumed.
+
+## Contributing
+
+Contributions are welcome as pull requests; the workflow, the commit style and
+the checks a change has to pass are described in the family's
+[CONTRIBUTING.md](https://github.com/tui-tools/tui-kit/blob/main/CONTRIBUTING.md).
+Security vulnerabilities go through the family's
+[SECURITY.md](https://github.com/tui-tools/tui-kit/blob/main/SECURITY.md)
+instead, never in a public issue.
 
 ## License
 

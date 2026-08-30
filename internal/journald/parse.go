@@ -2,6 +2,8 @@ package journald
 
 import (
 	"encoding/json"
+	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -101,7 +103,10 @@ func entryFrom(raw map[string]json.RawMessage) logs.Entry {
 func fieldValue(raw json.RawMessage) string {
 	var text string
 	if err := json.Unmarshal(raw, &text); err == nil {
-		return text
+		// Sanitized like the binary form below: JSON carries an escape as
+		// \u001b, so a plain string field can hold the same byte a terminal
+		// would obey.
+		return sanitize(text)
 	}
 	var list []json.RawMessage
 	if err := json.Unmarshal(raw, &list); err != nil {
@@ -171,6 +176,12 @@ func ParseBootsJSON(out string) []logs.Boot {
 	}
 	boots := make([]logs.Boot, 0, len(raw))
 	for _, entry := range raw {
+		// Same rule as the table parser: the id is what `--boot=<id>` is
+		// built with, so a record without one is not a boot this picker can
+		// offer.
+		if !bootIDRe.MatchString(entry.BootID) {
+			continue
+		}
 		boots = append(boots, logs.Boot{
 			Index: entry.Index,
 			ID:    entry.BootID,
@@ -201,7 +212,9 @@ func ParseBootsTable(out string) []logs.Boot {
 			// The header row, or the "-- Boot …" banner of an older release.
 			continue
 		}
-		if len(fields[1]) != 32 {
+		// The id is what `journalctl --boot=<id>` is built with, so only the
+		// 32 hex digits journald prints are accepted as one.
+		if !bootIDRe.MatchString(fields[1]) {
 			continue
 		}
 		boot := logs.Boot{Index: index, ID: fields[1]}
@@ -215,6 +228,9 @@ func ParseBootsTable(out string) []logs.Boot {
 	}
 	return newestFirst(boots)
 }
+
+// bootIDRe is a journal boot id: 32 hex digits, nothing else.
+var bootIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // listBootsLayouts are the timestamp forms `--list-boots` prints. The zone is
 // an offset on a modern systemd and a name on an older one, and a machine set
@@ -283,7 +299,7 @@ func ParseDiskUsage(out string) (string, int64) {
 	if text == "" {
 		return "", 0
 	}
-	text = firstLine(text)
+	text = sanitize(strings.TrimSpace(firstLine(text)))
 	for _, field := range strings.Fields(text) {
 		if bytes, ok := parseSize(field); ok {
 			return text, bytes
@@ -310,10 +326,18 @@ func parseSize(field string) (int64, bool) {
 			continue
 		}
 		value, err := strconv.ParseFloat(number, 64)
-		if err != nil {
+		// A size is never negative, and one that does not fit in an int64 is
+		// not a journal — the byte count is what the housekeeping screen does
+		// its arithmetic with, and an overflowed one would be arithmetic on
+		// nonsense.
+		if err != nil || !(value >= 0) {
 			return 0, false
 		}
-		return int64(value * float64(unit.scale)), true
+		scaled := value * float64(unit.scale)
+		if scaled >= float64(math.MaxInt64) {
+			return 0, false
+		}
+		return int64(scaled), true
 	}
 	return 0, false
 }
@@ -364,13 +388,15 @@ func ParseCatConfig(out string) []logs.ConfSetting {
 		text := strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
 		key, value, found := strings.Cut(text, "=")
 		key = strings.TrimSpace(key)
-		if !found || key == "" || strings.ContainsAny(key, " \t") {
+		// A key is drawn on screen and matched against by name, so only the
+		// shape a unit-file setting has is read as one.
+		if !found || !confKeyRe.MatchString(key) {
 			continue
 		}
 
 		setting := logs.ConfSetting{
 			Key:     key,
-			Value:   strings.TrimSpace(value),
+			Value:   sanitize(strings.TrimSpace(value)),
 			File:    file,
 			Line:    number,
 			Default: commented,
@@ -394,6 +420,10 @@ func ParseCatConfig(out string) []logs.ConfSetting {
 	return out2
 }
 
+// confKeyRe is the shape of a setting name in a systemd unit-style
+// configuration file.
+var confKeyRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 // configHeader reads the `# /path/to/file` line cat-config puts in front of
 // each file it concatenated, and reports whether the line was one.
 func configHeader(line string) (string, bool) {
@@ -407,9 +437,11 @@ func configHeader(line string) (string, bool) {
 	return path, true
 }
 
-// firstLine keeps a message to a single line.
+// firstLine keeps a message to a single line. A carriage return ends one as
+// surely as a newline does, and it is the break a terminal would obey without
+// showing anything.
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
 		return s[:i]
 	}
 	return s
