@@ -89,6 +89,12 @@ type Real struct {
 	// purpose: an export goes into the user's own home directory, as the
 	// user, and a copy that escalated would leave a root-owned file behind.
 	install *runner.Runner
+	// installRoot and systemctlRoot are the escalated twins the retention
+	// form needs: its drop-in goes into /etc, and journald has to be
+	// restarted for it to take effect. They are nil on a machine with no
+	// usable privilege prefix, which is what turns the form off.
+	installRoot   *runner.Runner
+	systemctlRoot *runner.Runner
 
 	// caps gates what only exists on a new enough systemd. It comes from the
 	// manifest, so no version number is written into this file.
@@ -156,6 +162,24 @@ func NewReal(sudoPrefix []string, caps compat.Caps) (*Real, error) {
 		SearchPaths: searchPaths["install"],
 		Timeout:     readTimeout,
 	})
+
+	// The two escalated twins the retention form needs. Its drop-in goes into
+	// /etc and journald has to be restarted for it to mean anything, and
+	// neither is something the export's unprivileged `install` may do — a
+	// machine with no usable `sudo -n` simply has no retention form, which
+	// the storage screen says where the key would have been.
+	real.installRoot, _ = runner.New(runner.Options{
+		Bin:         "install",
+		SearchPaths: searchPaths["install"],
+		SudoPrefix:  sudoPrefix,
+		Timeout:     readTimeout,
+	})
+	real.systemctlRoot, _ = runner.New(runner.Options{
+		Bin:         "systemctl",
+		SearchPaths: searchPaths["systemctl"],
+		SudoPrefix:  sudoPrefix,
+		Timeout:     actionTimeout,
+	})
 	return real, nil
 }
 
@@ -187,7 +211,17 @@ func (r *Real) Describe() string {
 
 // Capabilities reports what this backend supports on this systemd.
 func (r *Real) Capabilities() logs.Capabilities {
-	return Capabilities(r.caps.Has(FeatureListBootsJSON))
+	caps := Capabilities(r.caps.Has(FeatureListBootsJSON))
+	if r.installRoot == nil || r.systemctlRoot == nil {
+		caps.SupportsRetention = false
+		if caps.Unavailable == nil {
+			caps.Unavailable = map[string]string{}
+		}
+		caps.Unavailable[logs.CapRetention] = "the retention drop-in goes into " +
+			DropInDir + " and journald has to be restarted, and this machine " +
+			"has no privilege escalation this tool can use"
+	}
+	return caps
 }
 
 // Preview renders the exact command line Run will execute. Every command goes
@@ -221,14 +255,36 @@ func (r *Real) runnerFor(cmd logs.Command) *runner.Runner {
 		}
 		return r.journal
 	case "systemctl":
+		// Listing units is a read anyone may do; restarting journald is not.
+		if isUnitRestart(cmd) {
+			return r.systemctlRoot
+		}
 		return r.systemctl
+	case "install":
+		// An export goes into the user's own home directory as the user; the
+		// retention drop-in goes into /etc and cannot. Which of the two a
+		// command is, is visible in its destination.
+		if isDropInInstall(cmd) {
+			return r.installRoot
+		}
+		return r.install
 	case "systemd-analyze":
 		return r.analyze
-	case "install":
-		return r.install
 	default:
 		return nil
 	}
+}
+
+// isUnitRestart reports that a systemctl invocation restarts a unit rather
+// than listing something.
+func isUnitRestart(cmd logs.Command) bool {
+	return len(cmd.Argv) > 1 && cmd.Argv[1] == "restart"
+}
+
+// isDropInInstall reports that an install invocation writes this tool's
+// journald drop-in, which is the one file it puts outside a home directory.
+func isDropInInstall(cmd logs.Command) bool {
+	return len(cmd.Argv) > 0 && cmd.Argv[len(cmd.Argv)-1] == DropInPath
 }
 
 // needsRoot reports that a journalctl invocation changes something, or reads
@@ -438,13 +494,9 @@ func (r *Real) ReadStorage(ctx context.Context) (logs.Storage, error) {
 	// `auto` means exactly that.
 	if info, err := os.Stat(JournalDir); err == nil && info.IsDir() {
 		storage.Persistent = true
-		storage.PersistentNote = JournalDir + " exists, so the journal survives a reboot"
+		storage.PersistentNote = PersistentNote
 	} else {
-		storage.PersistentNote = "there is no " + JournalDir + ", so the journal " +
-			"lives in " + RuntimeJournalDir + " and is lost on every reboot. " +
-			"`sudo mkdir -p " + JournalDir + " && sudo systemctl restart " +
-			"systemd-journald` is what changes that; tui-logs will not, because " +
-			"it is a decision with a disk budget behind it."
+		storage.PersistentNote = NotPersistentNote
 	}
 
 	out, err := r.read(ctx, BuildDiskUsage())
@@ -584,6 +636,44 @@ func stageFile(destination, content string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// ReadRetention reads the drop-in this tool owns, and the configuration in
+// force behind it, so the form opens on what the machine really says.
+func (r *Real) ReadRetention(ctx context.Context) (logs.Retention, error) {
+	retention, err := ReadDropIn(DropInPath)
+	if err != nil {
+		return logs.Retention{}, err
+	}
+	// The effective values are what the form falls back to for a key the
+	// drop-in does not set, which on a first run is all of them.
+	storage, storageErr := r.ReadStorage(ctx)
+	if storageErr == nil {
+		retention.Effective = EffectiveRetention(storage.Conf)
+	}
+	return retention, nil
+}
+
+// BuildRetention renders the drop-in the answers describe, stages it in a
+// private temporary file, and returns the plan that installs it.
+//
+// The staging is what makes the diff honest: the file the dialog shows a diff
+// of already exists, and `install` copies exactly that one. Nothing is written
+// under /etc until the confirmed commands run.
+func (r *Real) BuildRetention(values map[string]string) (logs.RetentionPlan, error) {
+	content, err := RenderDropIn(values)
+	if err != nil {
+		return logs.RetentionPlan{}, err
+	}
+	existing, err := ReadDropIn(DropInPath)
+	if err != nil {
+		return logs.RetentionPlan{}, err
+	}
+	temp, err := stageFile(DropInPath, content)
+	if err != nil {
+		return logs.RetentionPlan{}, err
+	}
+	return RetentionPlanFor(existing, content, temp)
 }
 
 // SuggestExportPath is where the export dialog starts.

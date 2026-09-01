@@ -276,15 +276,61 @@ the boots it still holds, and whether it survives a reboot.
 That last one is a directory, not a setting. `journald` writes to
 `/var/log/journal` when it exists and to `/run/log/journal` when it does not,
 whatever `Storage=` says, because `auto` is the default and `auto` means
-exactly that. The screen reports which, and tells you the two commands that
-change it — it does not run them. Making a journal persistent is a decision
-with a disk budget behind it, and it belongs to whoever owns the disk.
+exactly that. The screen reports which — and where it used to hand you a shell
+command for it, `S` now offers `Storage=persistent`, which is what makes
+journald create that directory itself on its next start.
 
 Below that is `journald.conf` as it actually resolves, from
 `systemd-analyze cat-config systemd/journald.conf`, with the file and line
 behind each setting and the compiled-in defaults marked as such. journald's
 rule is the opposite of `sshd`'s: the **last** value read wins, so a drop-in
 beats the vendor file, and that is what the screen shows.
+
+## Retention: how much journal, and for how long
+
+The screen above answers "what does the journal cost". `S` is the one key that
+changes the answer, rather than shrinking the journal once and letting it grow
+straight back:
+
+| Key | What it sets | Values |
+| --- | --- | --- |
+| `S` | `SystemMaxUse` | how much disk the journal may take: `500M`, `2G`, `4G` |
+| | `MaxRetentionSec` | how old an entry may get: `30d`, `6months`, `1year` |
+| | `Storage` | `auto`, `persistent` or `volatile` |
+
+Each prompt opens on what the machine says today — this tool's own drop-in
+when there is one, and `systemd-analyze cat-config` otherwise — so a first run
+starts from the real numbers rather than from three blanks. An empty answer
+leaves that key out of the file, which is how a limit is removed rather than
+only changed.
+
+What gets written is one file and always the same one:
+`/etc/systemd/journald.conf.d/50-tui-logs.conf`. It belongs to tui-logs, holds
+nothing else, and says in its own header that deleting it undoes everything.
+Nothing anyone else wrote is touched — journald reads a vendor file plus a
+directory of drop-ins, which is exactly what makes a tool-owned file possible.
+
+The confirm dialog shows a **unified diff** against what is on disk, not the
+new file and not a sentence about it, and then the two commands:
+
+```console
+$ sudo -n install -D -m 644 /tmp/tui-logs-.../50-tui-logs.conf /etc/systemd/journald.conf.d/50-tui-logs.conf
+$ sudo -n systemctl restart systemd-journald
+```
+
+The file is staged before you are asked anything, so the diff is of a file
+that already exists and `install` copies exactly that one.
+
+**Why a restart and not a reload.** journald re-reads its configuration on
+`SIGHUP`, and `systemctl reload` sends one — but the size and age limits are
+enforced from the moment the journal files are opened, so a reloaded journald
+goes on applying the limits it started with until something else rotates them.
+The restart is what makes the new numbers true now. It loses no entries: what
+arrives during it waits in the kernel's buffer.
+
+If this machine has no privilege escalation this tool can use, the drop-in
+cannot be installed and journald cannot be restarted, so `S` says so on the
+storage screen instead of failing at the dialog.
 
 ## Housekeeping
 
@@ -299,9 +345,12 @@ Four commands, each previewed and confirmed:
 | `o` | `journalctl --rotate` | Closes the active files and starts new ones. Deletes nothing. |
 | `y` | `journalctl --verify` | Checks every file's hashes. A read, and on a large journal a slow one. |
 
-`systemctl restart systemd-journald` is deliberately **not** here. It is the
-obvious fifth button and it is the one that can lose the entries in flight;
-`--rotate` does the useful half of it without that.
+`systemctl restart systemd-journald` is not one of these four. It appears in
+exactly one place — the second half of the retention plan above — because
+that is the only thing it is genuinely needed for. As a standalone button next
+to `--rotate` it would be the obvious fifth one and the wrong one: `--rotate`
+does the useful half of it, and a restart nobody has a reason for is a restart
+nobody should be offered.
 
 ## Export
 
@@ -445,11 +494,15 @@ Every one of these is previewed and confirmed first.
 | `o` | `journalctl --rotate` |
 | `y` | `journalctl --verify` (a read) |
 | `x` | `install -m 600 <staged file> <path under $HOME>` |
+| `S` | `install -D -m 644 <staged file> /etc/systemd/journald.conf.d/50-tui-logs.conf`, then `systemctl restart systemd-journald` |
 
 Nothing else. There is no code path that writes anything else anywhere: the
-only `install` refuses a destination outside your home directory, and the
-vacuum arguments come from a fixed list rather than a text field, because a
-typo in that field is a machine vacuumed down to nothing.
+export's `install` refuses a destination outside your home directory, the
+retention one has its destination compiled in and can write no other path, and
+the vacuum arguments come from a fixed list rather than a text field, because a
+typo in that field is a machine vacuumed down to nothing. The three keys the
+retention form collects are a closed set too, and every value is checked
+against what journald accepts before it becomes a line in a file.
 
 ## Keys
 
@@ -467,6 +520,7 @@ typo in that field is a machine vacuumed down to nothing.
 | `K` / `U` | Kernel only / your own user journal |
 | `c` | Clear every filter |
 | `x` | Export the window to a file |
+| `S` | Set the retention limits: how much journal, and for how long |
 | `v` / `V` | Vacuum by size / by age |
 | `o` | Rotate |
 | `y` | Verify |

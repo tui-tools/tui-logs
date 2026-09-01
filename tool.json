@@ -3,7 +3,7 @@
   "name": "tui-logs",
   "binary": "tui-logs",
   "tagline": "The journal on one screen: narrow it, follow it, and shrink it safely",
-  "description": "A terminal UI for the systemd journal. Every filter it offers is a journalctl argument — unit, priority, boot, time window, `--grep`, kernel only, the user journal — and the command line they add up to is on the status bar, so what you are looking at is always something you could have typed.\n\nPress enter on a line and you get the record rather than the sentence: the pid, the uid, the executable and its command line, the source file and line for a program that logs through sd-journal, the MESSAGE_ID with a name for the well-known ones, and every other field the journal happened to carry. There is no clipboard to copy it with, so the screen shows the `journalctl --cursor` invocation that prints that entry instead.\n\nA second screen counts the window on show: errors, the noisiest units, a sparkline. A third says what the journal costs, whether it survives a reboot, and what journald.conf resolves to.\n\nHousekeeping is four commands, each previewed and confirmed: vacuum by size, vacuum by age, rotate, verify. Nothing else here writes anything.\n\nRun `tui-logs --demo` to drive a sample journal: every key works, every command is built and previewed for real, and nothing touches your system.",
+  "description": "A terminal UI for the systemd journal. Every filter it offers is a journalctl argument — unit, priority, boot, time window, `--grep`, kernel only, the user journal — and the command line they add up to is on the status bar, so what is on screen is always something you could have typed.\n\nPress enter on a line and you get the record rather than the sentence: the pid, the uid, the executable and its command line, the source file and line for a program that logs through sd-journal, the MESSAGE_ID named where it is a well-known one, and every other field it carried. There is no clipboard, so the screen shows the `journalctl --cursor` invocation that prints that entry instead.\n\nA second screen counts the window: errors, the noisiest units, a sparkline. A third says what the journal costs and what journald.conf resolves to — and changes it: one key sets SystemMaxUse, MaxRetentionSec and Storage in a drop-in of its own, shown as a diff first.\n\nHousekeeping is four more commands, each previewed and confirmed: vacuum by size or age, rotate, verify.\n\nRun `tui-logs --demo` to drive a sample journal: every key works, every command is built and previewed for real, nothing is touched.",
   "category": "logs",
   "homepage": "https://github.com/tui-tools/tui-logs",
   "repo": "https://github.com/tui-tools/tui-logs",
@@ -72,6 +72,10 @@
     {
       "key": "x",
       "action": "Export the window to a file under your home directory"
+    },
+    {
+      "key": "S",
+      "action": "Set the journal's retention: how much disk, for how long, and where"
     },
     {
       "key": "v / V",
@@ -200,7 +204,7 @@
     }
   },
   "security": {
-    "needs_sudo": "Reading the system journal needs membership of systemd-journal, adm or wheel — no escalation at all. Only a machine that refuses that read retries it through `sudo -n`, which never prompts, and the header says which of the two you are looking at. The four housekeeping commands always escalate.",
+    "needs_sudo": "Reading the system journal needs membership of systemd-journal, adm or wheel — no escalation at all. Only a machine that refuses that read retries it through `sudo -n`, which never prompts. Housekeeping and the retention drop-in always escalate, and each is previewed first.",
     "preview_before_run": true,
     "no_daemon": true,
     "no_network": true,

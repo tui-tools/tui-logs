@@ -107,6 +107,8 @@ type app struct {
 	picker    ui.Picker
 	pickerFor string
 	inputFor  string
+	// retention is the three-answer form behind S, nil when none is open.
+	retention *retentionForm
 
 	status     string
 	statusKind ui.StatusKind
@@ -318,6 +320,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.follow()
 
+	case retentionMsg:
+		return a, a.onRetention(msg)
+
 	case exportMsg:
 		a.busy = false
 		if msg.err != nil {
@@ -431,6 +436,7 @@ func (a *app) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	a.input, a.inputFor = ui.Input{}, ""
 	a.mode = modeBrowse
 	if !accepted {
+		a.cancelRetention()
 		a.setStatus(ui.StatusInfo, "cancelled")
 		return a, nil
 	}
@@ -439,6 +445,9 @@ func (a *app) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, a.applyFilter(func(f *logs.Filter) { f.Grep = value })
 	case promptExport:
 		return a, a.stageExport(value)
+	}
+	if key, ok := retentionKeyOf(field); ok {
+		return a, a.answerRetention(key, value)
 	}
 	return a, nil
 }
@@ -455,6 +464,7 @@ func (a *app) handlePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	a.picker, a.pickerFor = ui.Picker{}, ""
 	a.mode = modeBrowse
 	if !accepted {
+		a.cancelRetention()
 		a.setStatus(ui.StatusInfo, "cancelled")
 		return a, nil
 	}
@@ -501,6 +511,9 @@ func (a *app) applyChoice(field, choice string) tea.Cmd {
 	case pickVacuumTime:
 		return a.buildAndConfirm("Vacuum entries older than "+choice,
 			func() (logs.Command, error) { return a.backend.BuildVacuumTime(choice) })
+	}
+	if key, ok := retentionKeyOf(field); ok {
+		return a.answerRetention(key, choice)
 	}
 	return nil
 }
@@ -627,6 +640,8 @@ func (a *app) handleActionKey(msg tea.KeyMsg) tea.Cmd {
 	case "V":
 		return a.openVacuumPicker(pickVacuumTime, "Vacuum by age",
 			a.caps.VacuumTimes)
+	case "S":
+		return a.openRetentionForm()
 	case "o":
 		return a.confirmRotate()
 	case "y":

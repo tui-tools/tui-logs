@@ -181,7 +181,7 @@ func (a *app) defaultStatus() string {
 	case screenStats:
 		return "the window on screen, counted  ·  tab to move  ·  ? for help"
 	case screenStorage:
-		return "v vacuum by size  ·  V by age  ·  o rotate  ·  y verify  ·  ? for help"
+		return "S retention  ·  v vacuum by size  ·  V by age  ·  o rotate  ·  y verify  ·  ? for help"
 	default:
 		if command := a.model.Command.String(); command != "" {
 			return "$ " + command
@@ -390,6 +390,7 @@ func (a *app) storageRows() []infoRow {
 		}
 		rows = append(rows, infoRow{"  " + setting.Key, value + suffix})
 	}
+	rows = append(rows, infoRow{"retention", a.retentionHint()})
 	rows = append(rows, infoRow{"housekeeping",
 		"v vacuums by size, V by age, o rotates, y verifies — each previewed first"})
 	return rows
@@ -625,6 +626,7 @@ func (a *app) shortHelpKeys() []ui.KeyHint {
 	switch a.screen {
 	case screenStorage:
 		hints = append(hints,
+			ui.KeyHint{Key: "S", Desc: "retention"},
 			ui.KeyHint{Key: "v/V", Desc: "vacuum"},
 			ui.KeyHint{Key: "o", Desc: "rotate"},
 			ui.KeyHint{Key: "y", Desc: "verify"})
@@ -664,6 +666,7 @@ func helpKeys() []ui.KeyHint {
 		{Key: "U", Desc: "your own user journal (--user) instead of the system one"},
 		{Key: "c", Desc: "clear every filter"},
 		{Key: "x", Desc: "export this window to a file under your home directory"},
+		{Key: "S", Desc: "set the retention limits: how much journal, and for how long"},
 		{Key: "v / V", Desc: "vacuum the journal by size / by age"},
 		{Key: "o", Desc: "rotate: close the active files, delete nothing"},
 		{Key: "y", Desc: "verify every journal file (a read, and a slow one)"},

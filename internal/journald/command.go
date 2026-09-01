@@ -52,6 +52,7 @@ var capabilities = logs.Capabilities{
 	SupportsVerify:      true,
 	SupportsExport:      true,
 	SupportsUserJournal: true,
+	SupportsRetention:   true,
 	VacuumSizes:         vacuumSizes,
 	VacuumTimes:         vacuumTimes,
 }
