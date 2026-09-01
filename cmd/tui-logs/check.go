@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tui-tools/tui-kit/compat"
+	"github.com/tui-tools/tui-logs/internal/journald"
 	"github.com/tui-tools/tui-logs/internal/logs"
 )
 
@@ -95,6 +96,14 @@ type checkReport struct {
 	Units        int `json:"units"`
 	ConfSettings int `json:"confSettings"`
 
+	// Retention is what the drop-in this tool owns says today, and
+	// RetentionWritable whether it could be written at all — which is a
+	// question about privilege escalation rather than about the journal.
+	Retention         map[string]string `json:"retention"`
+	RetentionPath     string            `json:"retentionPath"`
+	RetentionExists   bool              `json:"retentionExists"`
+	RetentionWritable bool              `json:"retentionWritable"`
+
 	// Compat is what the backend version probe found. It is reported rather
 	// than asserted: an untested version is a fact about the machine, not a
 	// failure of the read path.
@@ -144,6 +153,16 @@ func runCheck(backend logs.Backend, filter logs.Filter,
 		ConfSettings:   len(model.Storage.Conf),
 		Compat:         backendCompat,
 		Storage:        model.Storage,
+
+		RetentionPath:     journald.DropInPath,
+		RetentionWritable: backend.Capabilities().SupportsRetention,
+	}
+	// The retention read is reported rather than fatal: a machine whose
+	// drop-in cannot be read still has a working journal view, and the answer
+	// belongs in the report instead of in an exit code.
+	if retention, retentionErr := backend.ReadRetention(ctx); retentionErr == nil {
+		report.Retention = retention.Values
+		report.RetentionExists = retention.Exists
 	}
 	for _, unit := range model.Stats.TopUnits {
 		report.TopUnits = append(report.TopUnits,

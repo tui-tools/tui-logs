@@ -97,6 +97,9 @@ type Fake struct {
 	// staged is the pending export content, keyed by destination path.
 	// --demo writes no file at all, so the "staging directory" is this map.
 	staged map[string]string
+	// dropIn is the sample machine's copy of the retention drop-in this tool
+	// owns, empty when it has never been written.
+	dropIn string
 }
 
 // NewFake builds the sample machine: two boots, five units and the kernel,
@@ -119,7 +122,7 @@ func (f *Fake) reset() {
 	f.units = ParseUnits(demoUnits())
 	f.storage = logs.Storage{
 		Persistent:     true,
-		PersistentNote: JournalDir + " exists, so the journal survives a reboot",
+		PersistentNote: PersistentNote,
 		ConfSource:     "systemd-analyze cat-config " + ConfName,
 		Conf:           ParseCatConfig(demoConf),
 	}
@@ -563,8 +566,12 @@ func (f *Fake) apply(cmd logs.Command) (string, error) {
 	}
 	argv := cmd.Argv
 	switch {
+	case argv[0] == "install" && isDropInInstall(cmd):
+		return f.installDropIn()
 	case argv[0] == "install" && argv[1] == "-m":
 		return f.installExport(argv)
+	case argv[0] == "systemctl" && argv[1] == "restart":
+		return "", nil
 	case argv[0] == "journalctl" && argv[1] == "--rotate":
 		return "", nil
 	case argv[0] == "journalctl" && argv[1] == "--verify":
@@ -697,6 +704,78 @@ func checkDemoExportPath(path string) error {
 			demoHome, path)
 	}
 	return nil
+}
+
+// ReadRetention reports the sample machine's drop-in, and the effective
+// values behind it. The demo starts with no drop-in of its own, which is the
+// state a machine this has never run on is in — so the form opens on the
+// numbers `systemd-analyze cat-config` reported, exactly as a first real run
+// would.
+func (f *Fake) ReadRetention(_ context.Context) (logs.Retention, error) {
+	retention := logs.Retention{
+		Path:      DropInPath,
+		Exists:    f.dropIn != "",
+		Content:   f.dropIn,
+		Values:    ParseDropIn(f.dropIn),
+		Effective: EffectiveRetention(f.storage.Conf),
+	}
+	return retention, nil
+}
+
+// BuildRetention renders the same drop-in the real backend would and returns
+// the same two commands. --demo writes no file at all, so the staging path is
+// a name rather than a file.
+func (f *Fake) BuildRetention(values map[string]string) (logs.RetentionPlan, error) {
+	content, err := RenderDropIn(values)
+	if err != nil {
+		return logs.RetentionPlan{}, err
+	}
+	existing, err := f.ReadRetention(context.Background())
+	if err != nil {
+		return logs.RetentionPlan{}, err
+	}
+	temp := "/tmp/tui-logs/" + demoStamp + "-journald.conf"
+	f.staged[DropInPath] = content
+	return RetentionPlanFor(existing, content, temp)
+}
+
+// installDropIn records the drop-in the demo would have written, so pressing
+// S twice shows a diff against what the first one wrote.
+func (f *Fake) installDropIn() (string, error) {
+	content, ok := f.staged[DropInPath]
+	if !ok {
+		return "", fmt.Errorf("install: nothing staged for " + DropInPath)
+	}
+	f.dropIn = content
+	// The sample machine's effective configuration moves with it, the way a
+	// real one does once journald has been restarted.
+	f.storage.Conf = applyDropIn(f.storage.Conf, ParseDropIn(content))
+	return "", nil
+}
+
+// applyDropIn folds the drop-in's values into the effective configuration, so
+// the storage screen shows the change the way a real cat-config would after
+// the restart.
+func applyDropIn(conf []logs.ConfSetting, values map[string]string) []logs.ConfSetting {
+	out := make([]logs.ConfSetting, 0, len(conf)+len(values))
+	seen := map[string]bool{}
+	for _, setting := range conf {
+		if value, ok := values[setting.Key]; ok {
+			setting.Value, setting.Default = value, false
+			setting.File, setting.Line = DropInPath, 0
+			seen[setting.Key] = true
+		}
+		out = append(out, setting)
+	}
+	for _, setting := range RetentionSettings {
+		value, ok := values[setting.Key]
+		if !ok || seen[setting.Key] {
+			continue
+		}
+		out = append(out, logs.ConfSetting{
+			Key: setting.Key, Value: value, File: DropInPath})
+	}
+	return out
 }
 
 // SuggestExportPath is where the export prompt starts on the sample machine.

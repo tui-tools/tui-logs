@@ -217,6 +217,37 @@ check "the journald configuration was read" \
   "$bin --check" \
   '"confSettings": [1-9][0-9]*'
 
+# 7b. The retention drop-in this tool owns. The form on the storage screen
+#     seeds itself from this read, so a machine where it comes back wrong is a
+#     machine where the form would offer the wrong current values.
+check "the retention drop-in path is the tool's own" \
+  "$bin --check" \
+  '"retentionPath": "/etc/systemd/journald.conf.d/50-tui-logs.conf"'
+
+drop_in=/etc/systemd/journald.conf.d/50-tui-logs.conf
+if [[ -f "$drop_in" ]]; then
+  check "an existing drop-in is reported as existing" \
+    "$bin --check" '"retentionExists": true'
+  max_use=$(sed -n 's/^SystemMaxUse=\(.*\)$/\1/p' "$drop_in" | head -1)
+  if [[ -n "$max_use" ]]; then
+    check "SystemMaxUse matches the drop-in ($max_use)" \
+      "$bin --check" "\"SystemMaxUse\": \"$max_use\""
+  fi
+else
+  # The normal state of a machine this has never run on. It is not an error,
+  # and the tool must not report a file that is not there.
+  check "a machine with no drop-in reports none" \
+    "$bin --check" '"retentionExists": false'
+fi
+
+# 7c. Whether the form can be offered at all is a question about privilege
+#     escalation, not about the journal: the drop-in goes into /etc and
+#     journald has to be restarted. The suite runs as a user with `sudo -n`,
+#     so it is writable here — and this is what would catch a routing change
+#     that quietly sent the drop-in through the unprivileged `install`.
+check "the retention form is offered on this machine" \
+  "$bin --check" '"retentionWritable": true'
+
 # 8. The counts are there whatever the machine has been up to. A guest that has
 #    just booted may have no errors at all, so the assertion is on the field
 #    rather than on a number.

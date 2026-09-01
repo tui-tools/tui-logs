@@ -203,3 +203,51 @@ func FuzzParsePriority(f *testing.F) {
 		}
 	})
 }
+
+// FuzzParseDropIn guards the read the retention form seeds itself from.
+//
+// A value it returns is offered back as the current setting and, if the user
+// leaves it alone, is compared against what the form would write — and a
+// value that survives the round trip has to be one RenderDropIn will accept.
+// A drop-in someone edited by hand is exactly the input this sees.
+func FuzzParseDropIn(f *testing.F) {
+	f.Add("[Journal]\nSystemMaxUse=2G\nMaxRetentionSec=1month\nStorage=persistent\n")
+	f.Add("SystemMaxUse = 4G")
+	f.Add("[Journal]\n#SystemMaxUse=2G\n")
+	f.Add("Storage=none\n")
+	// The regression FuzzParseDropIn found: a value carrying a NUL used to be
+	// kept, and it seeds a prompt the terminal then draws.
+	f.Add("MaxRetentionSec=\x00")
+	f.Add("=\n[\n]\n")
+	f.Add("")
+	f.Fuzz(func(t *testing.T, text string) {
+		values := ParseDropIn(text)
+		for key, value := range values {
+			setting, ok := RetentionSettingFor(key)
+			if !ok {
+				t.Fatalf("a key outside the form came back: %q", key)
+			}
+			if strings.TrimSpace(key) != key || strings.TrimSpace(value) != value {
+				t.Fatalf("%q=%q kept its padding", key, value)
+			}
+			printable(t, "setting value", value)
+			if !strings.Contains(text, value) {
+				t.Fatalf("value %q is not in the input", value)
+			}
+			// The round trip is the real assertion: whatever was read, only a
+			// value the validator accepts may be written back out. An empty
+			// one is accepted and means "leave this key out", so it has no
+			// round trip to make.
+			if value == "" || ValidateRetentionValue(setting, value) != nil {
+				continue
+			}
+			out, err := RenderDropIn(map[string]string{key: value})
+			if err != nil {
+				t.Fatalf("a validated %s=%q would not render: %v", key, value, err)
+			}
+			if got := ParseDropIn(out)[key]; got != value {
+				t.Fatalf("%s round-tripped as %q, want %q", key, got, value)
+			}
+		}
+	})
+}

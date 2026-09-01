@@ -503,6 +503,10 @@ func topCounts(counts map[string]int, limit int) []Count {
 // knows only this package.
 const CapBoots = "boots"
 
+// CapRetention names the retention form in Capabilities.Unavailable, for the
+// machine that can read the journal but cannot write to /etc.
+const CapRetention = "retention"
+
 // Capabilities tells the UI what a backend supports, so the key map is built
 // from the backend rather than hardcoded.
 type Capabilities struct {
@@ -518,6 +522,9 @@ type Capabilities struct {
 	// SupportsUserJournal reports that --user is a journal this backend can
 	// read.
 	SupportsUserJournal bool
+	// SupportsRetention reports that the journal's retention configuration
+	// can be written: a drop-in installed as root, and journald restarted.
+	SupportsRetention bool
 	// VacuumSizes and VacuumTimes are the values the housekeeping pickers
 	// offer, in the order they offer them.
 	VacuumSizes []string
@@ -592,6 +599,14 @@ type Backend interface {
 	// SuggestExportPath is the path the export prompt starts on, which is a
 	// backend question because the backend is what knows where it may write.
 	SuggestExportPath() string
+
+	// ReadRetention reads the retention drop-in this tool owns, so the form
+	// that edits it opens on what is really there.
+	ReadRetention(ctx context.Context) (Retention, error)
+	// BuildRetention renders the drop-in the answers describe, stages it, and
+	// returns the plan that installs it and restarts journald. Like an
+	// export, the file exists before the user is asked anything.
+	BuildRetention(values map[string]string) (RetentionPlan, error)
 }
 
 // ExportPlan is a window of the journal about to be written to a file: what
@@ -618,3 +633,59 @@ type ExportPlan struct {
 // ErrEmptyExport reports that the filter matched nothing, so there is no file
 // worth writing.
 var ErrEmptyExport = fmt.Errorf("this filter matched no entries, so there is nothing to export")
+
+// Retention is the journal's retention configuration as this tool sees it:
+// what its own drop-in says today, and what the machine has in force.
+//
+// The two are separate on purpose. The form is seeded from the drop-in when
+// there is one, because that is what this tool last wrote and what it is
+// about to rewrite; the effective values are what it falls back to, so a
+// first run opens on the machine's real numbers rather than on blanks.
+type Retention struct {
+	// Path is the drop-in this tool owns.
+	Path string
+	// Exists reports that the drop-in is already there.
+	Exists bool
+	// Content is the drop-in verbatim, and the text a diff is taken against.
+	Content string
+	// Values are the keys this tool manages, as the drop-in sets them.
+	Values map[string]string
+	// Effective are the same keys as the configuration in force has them,
+	// which is where the form starts when there is no drop-in yet.
+	Effective map[string]string
+	// Unavailable explains why the drop-in could not be read, when it could
+	// not be. An absent file is not a reason: that is Exists false.
+	Unavailable string
+}
+
+// Value is what the form should open a key on: the drop-in's answer when it
+// has one, and the machine's otherwise.
+func (r Retention) Value(key string) string {
+	if value, ok := r.Values[key]; ok && value != "" {
+		return value
+	}
+	return r.Effective[key]
+}
+
+// RetentionPlan is a journald drop-in about to be written: the file that was
+// staged, the diff against what is on disk, and the commands that install it
+// and make it take effect.
+type RetentionPlan struct {
+	// Path is the drop-in's destination.
+	Path string
+	// Content is the file that was staged, and TempPath where it was staged.
+	Content  string
+	TempPath string
+	// Diff is the unified diff from what is on disk to Content, which is what
+	// the confirm dialog shows.
+	Diff string
+	// Warning is a caveat the dialog must show, empty when there is none.
+	Warning string
+	// Commands are run in order: install the file, then restart journald.
+	Commands []Command
+}
+
+// ErrRetentionUnchanged reports that the answers describe the file already on
+// disk, so there is nothing to install.
+var ErrRetentionUnchanged = fmt.Errorf(
+	"these are the values already in force, so there is nothing to write")
