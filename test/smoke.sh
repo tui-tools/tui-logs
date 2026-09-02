@@ -204,10 +204,27 @@ else
   check "the journal is reported as volatile" "$bin --check" '"persistent": false'
 fi
 
-# 6. The unit list the picker is built from came from systemd, not from the
-#    entries on screen.
-want_units=$(systemctl list-units --all --plain --no-legend --no-pager 2>/dev/null | wc -l)
+# 6. The unit list the picker is built from was read, and it is the journal's
+#    list rather than every unit the machine has: a picker over all of them is
+#    hundreds of entries long, and most of those units have never logged a
+#    line, so picking one would filter the journal down to nothing.
+want_units=$(journalctl --no-pager --field _SYSTEMD_UNIT 2>/dev/null | wc -l)
+all_units=$(systemctl list-units --all --plain --no-legend --no-pager 2>/dev/null | wc -l)
 if [[ ${want_units:-0} -gt 0 ]]; then
+  check "the unit list was read" "$bin --check" '"units": [1-9][0-9]*'
+  got_units=$(sed -n 's/.*"units": \([0-9]*\).*/\1/p' <<<"$($bin --check 2>/dev/null)" | head -1)
+  if [[ -n $got_units && $got_units -le $want_units ]]; then
+    printf 'PASS  the %s units come from the journal, not from all %s of them\n' \
+      "$got_units" "${all_units:-?}"
+    pass=$((pass + 1))
+  else
+    printf 'FAIL  the tool offers %s units, the journal holds %s\n' \
+      "${got_units:-none}" "$want_units"
+    fail=$((fail + 1))
+  fi
+elif [[ ${all_units:-0} -gt 0 ]]; then
+  # No journal to ask — a container with an empty one — so the fallback list
+  # is what the picker gets, and it still has to be read.
   check "the unit list was read" "$bin --check" '"units": [1-9][0-9]*'
 fi
 

@@ -197,7 +197,7 @@ the status bar shows the whole invocation:
 
 | Key | Argument |
 | --- | --- |
-| `u` | `-u <unit>`, from `systemctl list-units --all` — the machine's units, not the ones on screen |
+| `u` | `-u <unit>`, from `journalctl --field _SYSTEMD_UNIT` — the units that have written to the journal, or a name you type |
 | `p` | `-p <level>`, which journalctl reads as "this level and worse" |
 | `b` | `-b <boot>`, from `journalctl --list-boots` |
 | `t` | `--since`, as one of `15m`, `1h`, `6h`, `today`, `this boot` |
@@ -212,9 +212,20 @@ last five hundred entries, and the line somebody is looking for is almost never
 in the last five hundred. Lower case matches either case; a capital anywhere
 makes it exact — that is journalctl's rule, not one invented here.
 
-The unit picker deliberately does not list "the units that appear in this
-window". The unit you are looking for is usually the one that *stopped*
-logging.
+The unit picker lists the units the **journal** has entries for, which on this
+machine is 249 names where `systemctl list-units --all` has 662. The difference
+is mounts, devices, slices and targets that have never logged a line: picking
+one filters the journal down to nothing, and having them in the list is what
+made finding `sshd.service` a matter of holding an arrow key down. The count
+and which list it is are in the picker's title.
+
+Its first entry types a name instead, and that reaches **any** unit — one whose
+entries have already been rotated away, one this machine has and has not used,
+one that does not exist yet. So the picker being short costs nothing.
+
+What the picker deliberately does not list is "the units that appear in this
+window": the unit you are looking for is usually the one that *stopped*
+logging, and it is in the journal's list either way.
 
 ### Following
 
@@ -563,7 +574,7 @@ against what journald accepts before it becomes a line in a file.
 - **No `systemctl restart systemd-journald`**, for the reason above.
 - **No unit management.** What a unit is, why it failed and how to restart it
   is [tui-systemd](https://github.com/tui-tools/tui-systemd)'s question; this
-  tool only reads its unit list to fill a picker.
+  tool only reads a unit list to fill a picker.
 - **No remote journals**: no `-m`/`--merge` across machines, no
   `systemd-journal-remote`, no `--file`. One machine's journal, as it is.
 - **No `--cursor-file`.** Follow keeps the cursor in memory and passes
@@ -666,12 +677,14 @@ make screenshots  # re-render the frames above from --demo
 
 The parser tests run against captured output in `internal/journald/testdata`.
 All of it is real — `journalctl -o json`, `--list-boots` in both formats,
-`--disk-usage`, `systemctl list-units` and `systemd-analyze cat-config` all
-answer to any user — from a Fedora 42 host, with the hostname and machine id
-rewritten. One file is synthetic and says so: `journal-json-shapes.txt` carries
+`--disk-usage`, `--field _SYSTEMD_UNIT`, `systemctl list-units` and
+`systemd-analyze cat-config` all answer to any user — from a Fedora 42 host,
+with the hostname and machine id rewritten. One file is synthetic and says so: `journal-json-shapes.txt` carries
 a message that is not valid UTF-8 and a field that repeated, because a real
 journal cannot be relied on to contain either and the parser has to survive
-both.
+both. `journal-units.txt` is a real capture cut down to forty names, keeping
+one of every shape the parser has to read: a scope, a template instance, and a
+device name with `\x` escapes in it.
 
 Dependencies are deliberately small: Bubble Tea, Bubbles and
 [tui-kit](https://github.com/tui-tools/tui-kit), which carries the palette, the

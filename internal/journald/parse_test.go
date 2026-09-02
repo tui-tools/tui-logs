@@ -224,6 +224,66 @@ func TestParseUnitsTakesOnlyTheName(t *testing.T) {
 	}
 }
 
+// TestParseJournalUnits reads the list the unit picker is built from: the
+// units the journal itself says have written to it.
+func TestParseJournalUnits(t *testing.T) {
+	units := ParseJournalUnits(fixture(t, "journal-units.txt"))
+	if len(units) == 0 {
+		t.Fatal("no units were parsed")
+	}
+	seen := map[string]bool{}
+	for _, unit := range units {
+		if strings.ContainsAny(unit, " \t") {
+			t.Errorf("unit %q carries more than the name", unit)
+		}
+		if seen[unit] {
+			t.Errorf("unit %q appears twice", unit)
+		}
+		seen[unit] = true
+	}
+	// Sorted, because the picker is a list a person reads down.
+	for i := 1; i < len(units); i++ {
+		if units[i-1] > units[i] {
+			t.Fatalf("units are not sorted: %q before %q", units[i-1], units[i])
+		}
+	}
+	// The shapes that are not a plain `name.service`: a scope, a template
+	// instance, and an escaped device name. All three are units a reader can
+	// filter on, so none of them may be dropped.
+	for _, unit := range []string{
+		"init.scope",
+		"user@1000.service",
+		"systemd-zram-setup@zram0.service",
+		`systemd-fsck@dev-disk-by\x2duuid-11112222\x2d3333\x2d4444\x2d5555\x2d666677778888.service`,
+	} {
+		if !seen[unit] {
+			t.Errorf("%q was dropped from the list", unit)
+		}
+	}
+	// And this is the point of reading the journal rather than systemctl: the
+	// list is the units that logged, not every unit the machine has.
+	if len(units) > 100 {
+		t.Errorf("the list has %d entries, which is a list nobody can use",
+			len(units))
+	}
+}
+
+// TestParseJournalUnitsDropsWhatCannotBeAnArgv keeps anything that is not a
+// unit name out of a list whose values are passed to journalctl as -u.
+func TestParseJournalUnitsDropsWhatCannotBeAnArgv(t *testing.T) {
+	units := ParseJournalUnits("sshd.service\n\n  \nnot a unit\n" +
+		"--switch\nsshd.service\ncrond.service\n")
+	want := []string{"crond.service", "sshd.service"}
+	if len(units) != len(want) {
+		t.Fatalf("ParseJournalUnits() = %v, want %v", units, want)
+	}
+	for i := range want {
+		if units[i] != want[i] {
+			t.Fatalf("ParseJournalUnits() = %v, want %v", units, want)
+		}
+	}
+}
+
 func TestParseDiskUsage(t *testing.T) {
 	text, bytes := ParseDiskUsage(fixture(t, "disk-usage.txt"))
 	if !strings.Contains(text, "journals take up") {

@@ -292,6 +292,36 @@ func ParseUnits(out string) []string {
 	return units
 }
 
+// ParseJournalUnits reads the unit names out of
+// `journalctl --field _SYSTEMD_UNIT`, which prints one value per line and in
+// no particular order.
+//
+// The names are sorted, because a picker over an unordered list of a hundred
+// names is a list nobody can find anything in, and deduplicated defensively:
+// the field index does not repeat a value, and a parser that assumed so would
+// be one journalctl release away from being wrong.
+func ParseJournalUnits(out string) []string {
+	seen := map[string]bool{}
+	var units []string
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || !unitRe.MatchString(name) || seen[name] {
+			continue
+		}
+		// Every unit name carries its type as a suffix, and none of them
+		// begins with a dash. Both are checked because these names are passed
+		// to journalctl as the argument of -u, and a value that reads as a
+		// switch is not a value this parser may produce.
+		if !strings.Contains(name, ".") || strings.HasPrefix(name, "-") {
+			continue
+		}
+		seen[name] = true
+		units = append(units, name)
+	}
+	sort.Strings(units)
+	return units
+}
+
 // ParseDiskUsage reads `journalctl --disk-usage`, which prints one sentence:
 // "Archived and active journals take up 3.9G in the file system."
 func ParseDiskUsage(out string) (string, int64) {

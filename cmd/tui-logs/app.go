@@ -62,8 +62,10 @@ const (
 	pickVacuumTime  = "vacuum-time"
 	promptGrep      = "grep"
 	promptExport    = "export"
+	promptUnit      = "unit-name"
 	anyChoice       = "(any)"
 	everyUnitChoice = "(every unit)"
+	typeUnitChoice  = "(type a unit name)"
 	everyBootChoice = "(every boot)"
 )
 
@@ -445,6 +447,8 @@ func (a *app) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, a.applyFilter(func(f *logs.Filter) { f.Grep = value })
 	case promptExport:
 		return a, a.stageExport(value)
+	case promptUnit:
+		return a, a.applyUnit(value)
 	}
 	if key, ok := retentionKeyOf(field); ok {
 		return a, a.answerRetention(key, value)
@@ -476,12 +480,13 @@ func (a *app) handlePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (a *app) applyChoice(field, choice string) tea.Cmd {
 	switch field {
 	case pickUnit:
-		return a.applyFilter(func(f *logs.Filter) {
-			f.Unit = ""
-			if choice != everyUnitChoice {
-				f.Unit, f.Kernel = choice, false
-			}
-		})
+		if choice == typeUnitChoice {
+			return a.openUnitPrompt()
+		}
+		if choice == everyUnitChoice {
+			return a.applyUnit("")
+		}
+		return a.applyUnit(choice)
 	case pickPriority:
 		return a.applyFilter(func(f *logs.Filter) {
 			f.Priority = logs.PriorityAny
@@ -668,21 +673,64 @@ func (a *app) toggleFollow() tea.Cmd {
 	return a.tick()
 }
 
-// openUnitPicker offers the machine's units, not the ones on screen: the unit
-// a reader is looking for is usually the one that stopped logging.
+// openUnitPicker offers the units that have written to the journal, not the
+// ones on screen: the unit a reader is looking for is usually the one that
+// stopped logging.
+//
+// It is deliberately not every unit the machine has. A picker that moves with
+// the arrows only is unusable at three hundred entries, and most of those
+// three hundred are mounts and devices that have never logged a line, so
+// picking one would filter the journal down to nothing. The first entry types
+// a name instead, which reaches any unit at all — including one whose entries
+// have already been rotated away, and one this machine does not have yet.
 func (a *app) openUnitPicker() tea.Cmd {
-	if len(a.model.Units) == 0 {
-		a.setStatus(ui.StatusWarn,
-			"the unit list could not be read; / filters by message instead")
-		return nil
-	}
+	options := []string{typeUnitChoice, everyUnitChoice}
+	options = append(options, a.model.Units...)
 	current := a.filter.Unit
 	if current == "" {
 		current = everyUnitChoice
 	}
-	a.openPicker(pickUnit, "Unit",
-		append([]string{everyUnitChoice}, a.model.Units...), current)
+	a.openPicker(pickUnit, unitPickerTitle(len(a.model.Units),
+		a.model.UnitsSource), options, current)
+	if len(a.model.Units) == 0 {
+		a.setStatus(ui.StatusWarn,
+			"the unit list could not be read; type a name, or / to filter by message")
+	}
 	return nil
+}
+
+// unitPickerTitle says how long the list is and which question it answers, so
+// a short list does not read as a list with something missing from it.
+func unitPickerTitle(count int, source string) string {
+	if count == 0 || source == "" {
+		return "Unit"
+	}
+	return fmt.Sprintf("Unit (%d %s)", count, source)
+}
+
+// openUnitPrompt asks for a unit name, which is how any unit is reached
+// whether or not it is on the list.
+func (a *app) openUnitPrompt() tea.Cmd {
+	a.input = ui.NewInput("Filter by unit", "a unit name, or empty to clear",
+		a.filter.Unit)
+	a.input.Help = "Passed to journalctl as -u. Any unit name works, including " +
+		"one that is not on the list because its entries have been rotated " +
+		"away. A name without a suffix is a .service to systemd."
+	a.inputFor = promptUnit
+	a.mode = modeInput
+	return nil
+}
+
+// applyUnit puts one unit on the filter, or takes the filter off.
+func (a *app) applyUnit(unit string) tea.Cmd {
+	unit = strings.TrimSpace(unit)
+	return a.applyFilter(func(f *logs.Filter) {
+		f.Unit = ""
+		if unit != "" {
+			// The kernel has no unit, so the two filters cannot both be on.
+			f.Unit, f.Kernel = unit, false
+		}
+	})
 }
 
 // openPriorityPicker offers the eight syslog levels. journalctl's -p is "this

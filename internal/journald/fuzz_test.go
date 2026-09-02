@@ -140,6 +140,32 @@ func FuzzParseUnits(f *testing.F) {
 	})
 }
 
+func FuzzParseJournalUnits(f *testing.F) {
+	seed(f, "journal-units.txt")
+	f.Fuzz(func(t *testing.T, out string) {
+		units := ParseJournalUnits(out)
+		seen := map[string]bool{}
+		for i, name := range units {
+			// These names are what the picker puts back on the command line as
+			// `-u <name>`, so nothing that reads as a switch, and nothing a
+			// unit name may not contain, may come out of here.
+			if !unitRe.MatchString(name) {
+				t.Fatalf("unit %q is not a name journalctl would take", name)
+			}
+			if strings.HasPrefix(name, "-") {
+				t.Fatalf("unit %q would read as a switch", name)
+			}
+			if seen[name] {
+				t.Fatalf("unit %q listed twice", name)
+			}
+			seen[name] = true
+			if i > 0 && units[i-1] > name {
+				t.Fatalf("units are not sorted: %q before %q", units[i-1], name)
+			}
+		}
+	})
+}
+
 func FuzzParseDiskUsage(f *testing.F) {
 	seed(f, "disk-usage.txt")
 	f.Fuzz(func(t *testing.T, out string) {

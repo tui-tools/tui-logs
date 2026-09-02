@@ -119,7 +119,7 @@ func (f *Fake) reset() {
 	// structs, so --demo exercises the code a machine's journal goes through.
 	f.entries = ParseEntries(demoJournal())
 	f.boots = ParseBootsJSON(demoBoots())
-	f.units = ParseUnits(demoUnits())
+	f.units = ParseJournalUnits(demoJournalUnits())
 	f.storage = logs.Storage{
 		Persistent:     true,
 		PersistentNote: PersistentNote,
@@ -129,16 +129,17 @@ func (f *Fake) reset() {
 	f.storage.DiskUsage, f.storage.Bytes = ParseDiskUsage(demoDiskUsage)
 }
 
-// demoUnits is what `systemctl list-units --all --plain --no-legend` prints
-// on the sample machine, trimmed to the columns the parser reads.
-func demoUnits() string {
+// demoJournalUnits is what `journalctl --field _SYSTEMD_UNIT` prints on the
+// sample machine: the units that have written to its journal, in the order the
+// field index happens to hold them, which is the order the parser sorts away.
+func demoJournalUnits() string {
 	return strings.Join([]string{
-		"sshd.service            loaded active   running OpenSSH server daemon",
-		"nginx.service           loaded active   running The nginx HTTP server",
-		"postgresql.service      loaded failed   failed  PostgreSQL database server",
-		"NetworkManager.service  loaded active   running Network Manager",
-		"backup.service          loaded inactive dead    Nightly backup",
-		"systemd-journald.service loaded active  running Journal Service",
+		"nginx.service",
+		"systemd-journald.service",
+		"sshd.service",
+		"backup.service",
+		"postgresql.service",
+		"NetworkManager.service",
 	}, "\n")
 }
 
@@ -360,14 +361,15 @@ func (f *Fake) Load(_ context.Context, filter logs.Filter) (logs.Model, error) {
 		return logs.Model{}, err
 	}
 	return logs.Model{
-		Backend: f.Name(),
-		Filter:  filter,
-		Command: cmd,
-		Entries: entries,
-		Units:   f.units,
-		Boots:   f.boots,
-		Storage: f.storage,
-		Stats:   logs.ComputeStats(entries, filter.WithLines(filter.Lines).Lines),
+		Backend:     f.Name(),
+		Filter:      filter,
+		Command:     cmd,
+		Entries:     entries,
+		Units:       f.units,
+		UnitsSource: logs.UnitsFromJournal,
+		Boots:       f.boots,
+		Storage:     f.storage,
+		Stats:       logs.ComputeStats(entries, filter.WithLines(filter.Lines).Lines),
 		Access: logs.Access{
 			Note: "the sample journal opens without any privileges at all",
 		},
