@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -535,5 +536,80 @@ func TestUnknownPriorityIsNotAnEmergency(t *testing.T) {
 	}
 	if got := priorityLabel(logs.PriorityAny); got != "—" {
 		t.Errorf("priorityLabel(any) = %q", got)
+	}
+}
+
+// TestTheUnitPickerIsShortAndReachesAnyUnit is the fix for a picker that was
+// unusable on a real machine: it offered every unit systemd knows — 327 of
+// them on the machine this was found on — with no filter and no type-ahead,
+// so finding sshd.service meant holding an arrow key down.
+//
+// It now offers the units that have written to the journal, which is the only
+// set filtering by unit can return anything for, and its first entry types a
+// name for everything else.
+func TestTheUnitPickerIsShortAndReachesAnyUnit(t *testing.T) {
+	a, _ := newTestApp(t)
+	drain(t, a, press(a, "u"))
+	if a.mode != modePicker {
+		t.Fatalf("u did not open a picker (mode %v)", a.mode)
+	}
+	if len(a.picker.Options) == 0 {
+		t.Fatal("the picker offers nothing")
+	}
+	// The way out of the list comes first, so it is reachable without moving.
+	if a.picker.Options[0] != typeUnitChoice {
+		t.Errorf("the first entry is %q, not the one that types a name",
+			a.picker.Options[0])
+	}
+	// The title says how long the list is and which question it answers, so a
+	// short list does not read as a list with something missing from it.
+	if !strings.Contains(a.picker.Title, "with journal entries") {
+		t.Errorf("the picker title does not say what the list is: %q",
+			a.picker.Title)
+	}
+	if !strings.Contains(a.picker.Title, fmt.Sprint(len(a.model.Units))) {
+		t.Errorf("the picker title does not carry the count: %q", a.picker.Title)
+	}
+
+	// Typing a name filters on a unit that is not on the list at all.
+	drain(t, a, press(a, "esc"))
+	pick(t, a, "u", typeUnitChoice)
+	if a.mode != modeInput {
+		t.Fatalf("the first entry did not open a prompt (mode %v)", a.mode)
+	}
+	typeInto(t, a, "chronyd.service")
+	if a.filter.Unit != "chronyd.service" {
+		t.Errorf("the typed unit did not reach the filter: %q", a.filter.Unit)
+	}
+	if !strings.Contains(a.model.Command.String(), "-u chronyd.service") {
+		t.Errorf("the read did not ask for the unit: %s", a.model.Command.String())
+	}
+
+	// And an empty answer takes the filter off again.
+	pick(t, a, "u", typeUnitChoice)
+	typeInto(t, a, "  ")
+	if a.filter.Unit != "" {
+		t.Errorf("an empty answer left the filter on %q", a.filter.Unit)
+	}
+}
+
+// TestUnitPickerTitleSaysWhichListItIs covers the fallback: a journal that
+// could not be asked leaves the long systemctl list, and the title has to say
+// so rather than claiming these units have entries.
+func TestUnitPickerTitleSaysWhichListItIs(t *testing.T) {
+	cases := []struct {
+		count  int
+		source string
+		want   string
+	}{
+		{count: 6, source: logs.UnitsFromJournal, want: "Unit (6 with journal entries)"},
+		{count: 327, source: logs.UnitsFromSystemd, want: "Unit (327 known to systemd)"},
+		{count: 0, source: "", want: "Unit"},
+	}
+	for _, tc := range cases {
+		if got := unitPickerTitle(tc.count, tc.source); got != tc.want {
+			t.Errorf("unitPickerTitle(%d, %q) = %q, want %q",
+				tc.count, tc.source, got, tc.want)
+		}
 	}
 }

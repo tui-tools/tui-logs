@@ -373,9 +373,13 @@ type Model struct {
 	Command Command
 	// Entries are the records that came back, newest first.
 	Entries []Entry
-	// Units are the unit names the picker offers, from the machine's own
-	// unit list rather than from the entries on screen.
+	// Units are the unit names the picker offers: the units that have written
+	// to the journal, which is a far shorter list than the units the machine
+	// has and the only one where filtering by unit can return anything.
 	Units []string
+	// UnitsSource says which question the list above answers, so the picker
+	// can say so in its title rather than showing a bare count.
+	UnitsSource string
 	// Boots are what `journalctl --list-boots` reported.
 	Boots []Boot
 	// Storage is what the journal costs, and Stats what the window holds.
@@ -689,3 +693,12 @@ type RetentionPlan struct {
 // disk, so there is nothing to install.
 var ErrRetentionUnchanged = fmt.Errorf(
 	"these are the values already in force, so there is nothing to write")
+
+// The two answers a unit list can be: the units that have written to the
+// journal, and — when the journal could not be asked — every unit the machine
+// has. They are the words the picker's title is built from, so a reader knows
+// which list they are looking at.
+const (
+	UnitsFromJournal = "with journal entries"
+	UnitsFromSystemd = "known to systemd"
+)

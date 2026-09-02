@@ -246,6 +246,25 @@ func BuildListUnits() logs.Command {
 	}
 }
 
+// BuildListJournalUnits renders the read that asks the journal itself which
+// units have written to it.
+//
+// This is the list the unit picker is built from, and it is a different
+// question from "which units does this machine have". A machine knows a few
+// hundred units — mounts, devices, slices, targets — and the picker over all
+// of them is a list nobody can find anything in. The journal knows the far
+// smaller set that has ever logged, which is the only set where filtering by
+// unit can return anything at all.
+//
+// `--field` (`-F`) prints one value per line and reads the field index rather
+// than the entries, so it is fast and it is a read.
+func BuildListJournalUnits() logs.Command {
+	return logs.Command{
+		Argv:        []string{"journalctl", "--no-pager", "--field", "_SYSTEMD_UNIT"},
+		Description: "List the units that have written to the journal",
+	}
+}
+
 // BuildDiskUsage renders the read that asks what the journal costs.
 func BuildDiskUsage() logs.Command {
 	return logs.Command{

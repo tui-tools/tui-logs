@@ -412,7 +412,7 @@ func (r *Real) Load(ctx context.Context, filter logs.Filter) (logs.Model, error)
 	model.Stats = logs.ComputeStats(entries, filter.WithLines(filter.Lines).Lines)
 
 	model.Boots = r.readBoots(ctx)
-	model.Units = r.readUnits(ctx)
+	model.Units, model.UnitsSource = r.readUnits(ctx)
 	storage, storageErr := r.ReadStorage(ctx)
 	if storageErr != nil && storage.ConfUnavailable == "" {
 		storage.ConfUnavailable = runner.FirstLine(storageErr.Error())
@@ -472,16 +472,32 @@ func (r *Real) readBoots(ctx context.Context) []logs.Boot {
 	return ParseBootsTable(out)
 }
 
-// readUnits lists the units the picker offers.
-func (r *Real) readUnits(ctx context.Context) []string {
+// readUnits lists the units the picker offers, and says where they came from.
+//
+// The journal is asked first: the units that have written to it are the only
+// ones filtering by unit can return anything for, and there are one or two
+// hundred fewer of them than the machine has units. `systemctl list-units` is
+// the fallback, for a journal too small or too restricted to answer — the
+// picker is then long, and the picker's own "type a unit name" entry is what
+// makes either list reachable anyway.
+func (r *Real) readUnits(ctx context.Context) ([]string, string) {
+	if out, err := r.read(ctx, BuildListJournalUnits()); err == nil {
+		if units := ParseJournalUnits(out); len(units) > 0 {
+			return units, logs.UnitsFromJournal
+		}
+	}
 	if r.systemctl == nil {
-		return nil
+		return nil, ""
 	}
 	out, err := r.systemctl.Read(ctx, BuildListUnits().Argv...)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
-	return ParseUnits(out)
+	units := ParseUnits(out)
+	if len(units) == 0 {
+		return nil, ""
+	}
+	return units, logs.UnitsFromSystemd
 }
 
 // ReadStorage reads what the journal costs and the configuration in force.
