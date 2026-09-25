@@ -233,7 +233,7 @@ func TestSearchGoesToJournalctlNotToTheRowsOnScreen(t *testing.T) {
 	a, _ := newTestApp(t)
 	drain(t, a, press(a, "/"))
 	typeInto(t, a, "invalid user")
-	if !strings.Contains(a.model.Command.String(), "--grep invalid user") {
+	if !strings.Contains(a.model.Command.String(), "--grep 'invalid user'") {
 		t.Fatalf("command = %q, want --grep in it", a.model.Command)
 	}
 	if len(a.model.Entries) == 0 {

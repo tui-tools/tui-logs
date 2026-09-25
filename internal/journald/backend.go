@@ -55,8 +55,11 @@ const installHint = "this tool needs systemd's journal; " +
 // gigabytes takes its time answering a query that has to walk it.
 const readTimeout = 45 * time.Second
 
-// actionTimeout bounds an action. `--verify` walks every file on disk, and on
-// a large journal that is minutes rather than seconds.
+// actionTimeout bounds an action, as the runners' MutationTimeout: the kit
+// leaves a mutation unbounded unless the runner sets one, and applies Timeout
+// to reads only. `--verify` walks every file on disk and a vacuum deletes
+// archives across it, and on a large journal both are minutes rather than
+// seconds, so the bound is generous; it is there so a hung child still ends.
 const actionTimeout = 15 * time.Minute
 
 // unprivileged is the address-of-false the runner options need.
@@ -128,6 +131,7 @@ func NewReal(sudoPrefix []string, caps compat.Caps) (*Real, error) {
 		Bin:             "journalctl",
 		SearchPaths:     searchPaths["journalctl"],
 		Timeout:         readTimeout,
+		MutationTimeout: actionTimeout,
 		PrivilegedReads: &unprivileged,
 		InstallHint:     installHint,
 	})
@@ -143,6 +147,7 @@ func NewReal(sudoPrefix []string, caps compat.Caps) (*Real, error) {
 		SearchPaths:     searchPaths["journalctl"],
 		SudoPrefix:      sudoPrefix,
 		Timeout:         actionTimeout,
+		MutationTimeout: actionTimeout,
 		PrivilegedReads: &privileged,
 	})
 	real.systemctl, _ = runner.New(runner.Options{
@@ -158,9 +163,10 @@ func NewReal(sudoPrefix []string, caps compat.Caps) (*Real, error) {
 		PrivilegedReads: &unprivileged,
 	})
 	real.install, _ = runner.New(runner.Options{
-		Bin:         "install",
-		SearchPaths: searchPaths["install"],
-		Timeout:     readTimeout,
+		Bin:             "install",
+		SearchPaths:     searchPaths["install"],
+		Timeout:         readTimeout,
+		MutationTimeout: actionTimeout,
 	})
 
 	// The two escalated twins the retention form needs. Its drop-in goes into
@@ -169,16 +175,18 @@ func NewReal(sudoPrefix []string, caps compat.Caps) (*Real, error) {
 	// machine with no usable `sudo -n` simply has no retention form, which
 	// the storage screen says where the key would have been.
 	real.installRoot, _ = runner.New(runner.Options{
-		Bin:         "install",
-		SearchPaths: searchPaths["install"],
-		SudoPrefix:  sudoPrefix,
-		Timeout:     readTimeout,
+		Bin:             "install",
+		SearchPaths:     searchPaths["install"],
+		SudoPrefix:      sudoPrefix,
+		Timeout:         readTimeout,
+		MutationTimeout: actionTimeout,
 	})
 	real.systemctlRoot, _ = runner.New(runner.Options{
-		Bin:         "systemctl",
-		SearchPaths: searchPaths["systemctl"],
-		SudoPrefix:  sudoPrefix,
-		Timeout:     actionTimeout,
+		Bin:             "systemctl",
+		SearchPaths:     searchPaths["systemctl"],
+		SudoPrefix:      sudoPrefix,
+		Timeout:         actionTimeout,
+		MutationTimeout: actionTimeout,
 	})
 	return real, nil
 }
