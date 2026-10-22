@@ -3,9 +3,10 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tui-tools/tui-logs/badge)](https://scorecard.dev/viewer/?uri=github.com/tui-tools/tui-logs)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14368/badge)](https://www.bestpractices.dev/projects/14368)
 
-> **Beta.** The family is days old and still changing. Package names, flags
-> and keys may move without notice until 1.0. Pin versions, and report what
-> breaks.
+<!-- stability:start -->
+> **Beta** tools may still change keys, flags or output before their 1.0;
+> stable tools follow semver. Pin versions, and report what breaks.
+<!-- stability:end -->
 
 A terminal UI for the systemd journal. Every filter it offers is a `journalctl`
 argument, **the command they add up to is on the status bar**, and every change
@@ -129,7 +130,7 @@ Upgrades then arrive with the rest of your system updates.
 ### Any distribution, static binary
 
 ```sh
-curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v0.2.2/tui-logs_0.2.2_linux_amd64.tar.gz | tar -xz tui-logs
+curl -fsSL https://github.com/tui-tools/tui-logs/releases/download/v0.2.4/tui-logs_0.2.4_linux_amd64.tar.gz | tar -xz tui-logs
 sudo install -m0755 tui-logs /usr/local/bin/tui-logs
 ```
 
