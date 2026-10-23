@@ -83,7 +83,7 @@
     },
     {
       "key": "o",
-      "action": "Rotate: close the active journal files, delete nothing"
+      "action": "Rotate: close the active journal files; journald then enforces its limits, previewed first"
     },
     {
       "key": "y",

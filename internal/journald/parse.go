@@ -32,12 +32,49 @@ func ParseEntries(out string) []logs.Entry {
 		}
 		entries = append(entries, entryFrom(raw))
 	}
-	// journalctl prints oldest first; what a reader wants on opening the
-	// screen is what just happened.
-	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
-		entries[i], entries[j] = entries[j], entries[i]
+	return newestEntriesFirst(entries)
+}
+
+// newestEntriesFirst puts a read in the order the screens show it: what just
+// happened at the top.
+//
+// The order journalctl prints in is not something to assume. A plain read
+// with -n prints oldest first, but the same read with --grep prints newest
+// first on systemd 255 — it walks the journal backwards to find the last n
+// matches and writes them as it finds them. Reversing unconditionally turned
+// every search upside down there. So the direction is read off the entries
+// themselves: when the first one is older than the last, the batch is
+// reversed, which keeps journalctl's own order for entries that share a
+// timestamp; a stable sort on the timestamp then settles anything that is
+// still out of place.
+func newestEntriesFirst(entries []logs.Entry) []logs.Entry {
+	if oldestFirst(entries) {
+		for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+			entries[i], entries[j] = entries[j], entries[i]
+		}
 	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].Realtime.After(entries[j].Realtime)
+	})
 	return entries
+}
+
+// oldestFirst reports whether a batch runs from old to new, judged by its
+// first and last timestamped entries. A batch that cannot tell — one entry,
+// or every timestamp equal — is taken to be in journalctl's documented
+// oldest-first order.
+func oldestFirst(entries []logs.Entry) bool {
+	var first, last time.Time
+	for _, entry := range entries {
+		if entry.Realtime.IsZero() {
+			continue
+		}
+		if first.IsZero() {
+			first = entry.Realtime
+		}
+		last = entry.Realtime
+	}
+	return !first.After(last)
 }
 
 // entryFrom lifts one decoded record into an Entry.

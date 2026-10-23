@@ -169,10 +169,15 @@ func TestBuildHousekeeping(t *testing.T) {
 		t.Fatalf("BuildRotate: %v", err)
 	}
 	assertArgv(t, rotate.Argv, []string{"journalctl", "--rotate"})
-	// Rotating deletes nothing: it renames the active files. Painting it in
-	// the danger colour would teach a reader to ignore that colour.
+	// The rotation renames the active files; whether journald deletes
+	// anything after it depends on the machine, so the command alone is not
+	// painted in the danger colour — RotateNote decides that — and its
+	// description must not promise that nothing is deleted.
 	if rotate.Destructive {
-		t.Error("rotate is not destructive")
+		t.Error("rotate on its own is not painted destructive")
+	}
+	if strings.Contains(strings.ToLower(rotate.Description), "nothing is deleted") {
+		t.Errorf("rotate promises nothing is deleted: %q", rotate.Description)
 	}
 
 	verify, err := BuildVerify()
@@ -310,5 +315,112 @@ func TestCapabilitiesExplainAnOlderSystemd(t *testing.T) {
 	// tool works: everything else must still be offered.
 	if !older.SupportsFollow || !older.SupportsVacuum || !older.SupportsExport {
 		t.Errorf("an older systemd lost capabilities it has: %+v", older)
+	}
+}
+
+// storageWith builds the storage screen's model around a disk usage and the
+// journald.conf settings a test cares about.
+func storageWith(persistent bool, bytes int64, settings ...logs.ConfSetting) logs.Storage {
+	return logs.Storage{Persistent: persistent, Bytes: bytes, Conf: settings}
+}
+
+func TestRotateNoteSaysWhatJournaldDeletesAfterARotation(t *testing.T) {
+	const mib = int64(1) << 20
+	setTo := func(key, value string) logs.ConfSetting {
+		return logs.ConfSetting{Key: key, Value: value,
+			File: "/etc/systemd/journald.conf.d/50-size.conf", Line: 2}
+	}
+	byDefault := func(key, value string) logs.ConfSetting {
+		return logs.ConfSetting{Key: key, Value: value, Default: true}
+	}
+
+	cases := []struct {
+		name     string
+		storage  logs.Storage
+		deletes  bool
+		contains []string
+	}{
+		{
+			// What a writer saw on a test machine: the limit was lowered to
+			// 48M on a 104M journal, and the rotation freed 88.7M.
+			name:     "over a lowered SystemMaxUse",
+			storage:  storageWith(true, 104*mib, setTo("SystemMaxUse", "48M")),
+			deletes:  true,
+			contains: []string{"SystemMaxUse=48M", "104.0M", "will delete entries"},
+		},
+		{
+			name:     "under its limit",
+			storage:  storageWith(true, 10*mib, setTo("SystemMaxUse", "48M")),
+			contains: []string{"SystemMaxUse=48M", "loses archived files", "loses nothing"},
+		},
+		{
+			name: "every limit that is set is named",
+			storage: storageWith(true, 10*mib, setTo("SystemMaxUse", "1G"),
+				setTo("SystemKeepFree", "2G"), setTo("MaxRetentionSec", "1month"),
+				byDefault("SystemMaxFiles", "100")),
+			contains: []string{"SystemMaxUse=1G", "SystemKeepFree=2G",
+				"MaxRetentionSec=1month"},
+		},
+		{
+			name: "no limit set falls back to the compiled-in one",
+			storage: storageWith(true, 10*mib, byDefault("SystemMaxUse", ""),
+				byDefault("SystemMaxFiles", "100")),
+			contains: []string{"compiled-in", "SystemMaxUse is 10%", "loses archived files"},
+		},
+		{
+			name:     "a volatile journal is held to the Runtime limits",
+			storage:  storageWith(false, 64*mib, setTo("RuntimeMaxUse", "32M"), setTo("SystemMaxUse", "1M")),
+			deletes:  true,
+			contains: []string{"RuntimeMaxUse=32M", "64.0M"},
+		},
+		{
+			name:     "a plain byte count",
+			storage:  storageWith(true, 2*mib, setTo("SystemMaxUse", "1048576")),
+			deletes:  true,
+			contains: []string{"SystemMaxUse=1048576"},
+		},
+		{
+			name:     "unreadable configuration",
+			storage:  storageWith(true, 2*mib),
+			contains: []string{"could not be read", "loses archived files"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			note, deletes := RotateNote(tc.storage)
+			if deletes != tc.deletes {
+				t.Errorf("deletes = %v, want %v: %s", deletes, tc.deletes, note)
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(note, want) {
+					t.Errorf("the note is missing %q: %s", want, note)
+				}
+			}
+			if strings.Contains(strings.ToLower(note), "nothing is deleted") {
+				t.Errorf("the note promises nothing is deleted: %s", note)
+			}
+			if tc.name == "a volatile journal is held to the Runtime limits" &&
+				strings.Contains(note, "SystemMaxUse") {
+				t.Errorf("a volatile journal was held to a System limit: %s", note)
+			}
+		})
+	}
+}
+
+func TestConfSizeReadsJournaldConfSizes(t *testing.T) {
+	cases := map[string]int64{
+		"48M": 48 << 20, "4G": 4 << 30, "512K": 512 << 10, "1048576": 1 << 20,
+		"1.5G": 3 << 29, "16m": 16 << 20,
+	}
+	for value, want := range cases {
+		got, ok := confSize(value)
+		if !ok || got != want {
+			t.Errorf("confSize(%q) = %d, %v; want %d", value, got, ok, want)
+		}
+	}
+	for _, bad := range []string{"", "lots", "-5", "10%"} {
+		if _, ok := confSize(bad); ok {
+			t.Errorf("confSize(%q) accepted", bad)
+		}
 	}
 }

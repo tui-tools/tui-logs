@@ -668,7 +668,7 @@ func helpKeys() []ui.KeyHint {
 		{Key: "x", Desc: "export this window to a file under your home directory"},
 		{Key: "S", Desc: "set the retention limits: how much journal, and for how long"},
 		{Key: "v / V", Desc: "vacuum the journal by size / by age"},
-		{Key: "o", Desc: "rotate: close the active files, delete nothing"},
+		{Key: "o", Desc: "rotate: close the active files; journald then enforces its size limits"},
 		{Key: "y", Desc: "verify every journal file (a read, and a slow one)"},
 		{Key: "R", Desc: "re-read everything"},
 		{Key: "?", Desc: "this help"},

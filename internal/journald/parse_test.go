@@ -3,6 +3,7 @@ package journald
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -407,5 +408,74 @@ func TestComputeStatsCountsTheWindow(t *testing.T) {
 	}
 	if stats.Truncated {
 		t.Error("a seven-entry window is not the read limit")
+	}
+}
+
+// messagesOf lists the messages of a parsed read, top of the screen first.
+func messagesOf(entries []logs.Entry) []string {
+	messages := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		messages = append(messages, entry.Message)
+	}
+	return messages
+}
+
+// Both fixtures are the same three entries read off a systemd 255 journal:
+// once as a plain read with -n, which journalctl prints oldest first, and once
+// with --grep added, which systemd 255 prints newest first. The screen must
+// show both the same way, newest at the top.
+func TestParseEntriesIsNewestFirstWhateverOrderJournalctlUsed(t *testing.T) {
+	want := []string{"probe-line-30", "probe-line-29", "probe-line-28"}
+	for _, name := range []string{
+		"journal-json-oldest-first-systemd255.txt",
+		"journal-json-grep-newest-first-systemd255.txt",
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := messagesOf(ParseEntries(fixture(t, name)))
+			if strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Errorf("order = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// entryAt renders one minimal journal record for the ordering tests.
+func entryAt(micros int64, message string) string {
+	return `{"__REALTIME_TIMESTAMP":"` + strconv.FormatInt(micros, 10) +
+		`","MESSAGE":"` + message + `"}`
+}
+
+func TestParseEntriesOrdering(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"oldest first is reversed",
+			[]string{entryAt(1, "a"), entryAt(2, "b"), entryAt(3, "c")}, "c,b,a"},
+		{"newest first is kept",
+			[]string{entryAt(3, "c"), entryAt(2, "b"), entryAt(1, "a")}, "c,b,a"},
+		// Entries that share a timestamp keep journalctl's own order between
+		// them, read in the batch's direction.
+		{"ties in an oldest-first batch",
+			[]string{entryAt(1, "a"), entryAt(2, "b1"), entryAt(2, "b2"), entryAt(3, "c")},
+			"c,b2,b1,a"},
+		{"ties in a newest-first batch",
+			[]string{entryAt(3, "c"), entryAt(2, "b2"), entryAt(2, "b1"), entryAt(1, "a")},
+			"c,b2,b1,a"},
+		{"one out of place is settled",
+			[]string{entryAt(1, "a"), entryAt(3, "c"), entryAt(2, "b"), entryAt(4, "d")},
+			"d,c,b,a"},
+		{"a single entry", []string{entryAt(1, "a")}, "a"},
+		{"equal timestamps read as oldest first",
+			[]string{entryAt(1, "a"), entryAt(1, "b")}, "b,a"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := messagesOf(ParseEntries(strings.Join(tc.lines, "\n")))
+			if strings.Join(got, ",") != tc.want {
+				t.Errorf("order = %v, want %s", got, tc.want)
+			}
+		})
 	}
 }

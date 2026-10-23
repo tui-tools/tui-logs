@@ -356,7 +356,7 @@ Four commands, each previewed and confirmed:
 | --- | --- | --- |
 | `v` | `journalctl --vacuum-size=<N>` | Removes whole archived journal files, oldest first, until the total is under the limit. **There is no undo.** |
 | `V` | `journalctl --vacuum-time=<T>` | The same, by age. |
-| `o` | `journalctl --rotate` | Closes the active files and starts new ones. Deletes nothing. |
+| `o` | `journalctl --rotate` | Closes the active files and starts new ones. The rotation removes no entry itself, but journald enforces its size limits right after it: on a journal over `SystemMaxUse` it deletes archived files, oldest first, the ones just closed included. The dialog names the limits and says when the journal is over one. |
 | `y` | `journalctl --verify` | Checks every file's hashes. A read, and on a large journal a slow one. |
 
 `systemctl restart systemd-journald` is not one of these four. It appears in
@@ -695,13 +695,18 @@ widgets, the config loader and the command runner shared by the whole family.
 
 ## Safety notes
 
-- **Vacuuming is the only thing here that destroys anything, and it destroys
-  whole files.** `--vacuum-size=1G` removes archived journal files, oldest
+- **Vacuuming is what destroys entries on purpose, and it destroys whole
+  files.** `--vacuum-size=1G` removes archived journal files, oldest
   first, until the total is under a gigabyte; the result usually lands well
   under it. There is no undo and no second copy unless something forwards the
   journal elsewhere.
-- `--rotate` is the safe half of that answer: nothing is deleted, the active
-  files become archived ones, and a vacuum then has something to work with.
+- `--rotate` renames rather than removes: the active files become archived
+  ones, and a vacuum then has something to work with. It is not a no-op on a
+  journal that is over its limits, though: journald enforces `SystemMaxUse`,
+  `SystemKeepFree`, `SystemMaxFiles` and `MaxRetentionSec` right after it
+  rotates, so a journal over a limit you just lowered loses its oldest
+  archived files there and then. The dialog says which limits are set, and
+  turns red when the journal is over `SystemMaxUse`.
 - Reading needs no escalation on a machine where your account is in
   `systemd-journal`, `adm` or `wheel`. Only the four housekeeping commands
   always escalate, through `sudo -n`, which never prompts.

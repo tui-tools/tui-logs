@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tui-tools/tui-kit/compat"
 	"github.com/tui-tools/tui-kit/theme"
+	"github.com/tui-tools/tui-kit/ui"
 	"github.com/tui-tools/tui-logs/internal/journald"
 	"github.com/tui-tools/tui-logs/internal/logs"
 )
@@ -611,5 +612,85 @@ func TestUnitPickerTitleSaysWhichListItIs(t *testing.T) {
 			t.Errorf("unitPickerTitle(%d, %q) = %q, want %q",
 				tc.count, tc.source, got, tc.want)
 		}
+	}
+}
+
+// TestAFinishedReadTakesItsStatusDown: a filter change says "reading…" in the
+// status line, and the answer must take it down — a writer saw it stay after
+// a search had long finished, which reads as a read that never ended.
+func TestAFinishedReadTakesItsStatusDown(t *testing.T) {
+	a, _ := newTestApp(t)
+	drain(t, a, press(a, "/"))
+	typeInto(t, a, "invalid user")
+	if len(a.model.Entries) == 0 {
+		t.Fatal("the search matched nothing, so the test proves nothing")
+	}
+	if strings.Contains(a.status, "reading") {
+		t.Errorf("the status still says %q after the read finished", a.status)
+	}
+	if strings.Contains(a.View(), "reading") {
+		t.Error("the frame still says reading after the read finished")
+	}
+
+	// A message that replaced the reading line while the read was running
+	// is about something else, and stays.
+	cmd := a.applyFilter(func(f *logs.Filter) { f.Grep = "" })
+	if !strings.Contains(a.status, "reading") {
+		t.Fatalf("a filter change should say it is reading, says %q", a.status)
+	}
+	a.setStatus(ui.StatusWarn, "something else happened")
+	drain(t, a, cmd)
+	if a.status != "something else happened" {
+		t.Errorf("the read wiped an unrelated status: %q", a.status)
+	}
+
+	// A failed read keeps saying why.
+	a.readingStatus = ""
+	a.setStatus(ui.StatusInfo, "reading x…")
+	a.readingStatus = a.status
+	a.Update(entriesMsg{err: fmt.Errorf("journalctl refused")})
+	if a.status != "journalctl refused" {
+		t.Errorf("a failed read shows %q", a.status)
+	}
+}
+
+// TestRotateSaysWhatJournaldWillDelete: rotating is when journald enforces
+// its size limits, so on a journal over SystemMaxUse the rotation is followed
+// by a vacuum. The dialog used to say nothing is deleted; on a test machine
+// the same rotation freed 88.7M of archived journal.
+func TestRotateSaysWhatJournaldWillDelete(t *testing.T) {
+	a, backend := newTestApp(t)
+	drain(t, a, press(a, "o"))
+	if a.mode != modeConfirm {
+		t.Fatal("o did not open a dialog")
+	}
+	body := strings.Join(strings.Fields(a.confirm.Body), " ")
+	if strings.Contains(body, "Nothing is deleted") || strings.Contains(body, "nothing is deleted") {
+		t.Errorf("the dialog still promises nothing is deleted: %s", body)
+	}
+	// The demo journal is 3.9G under a 4G limit: named, and not red.
+	for _, want := range []string{"SystemMaxUse=4G", "loses archived files", "loses nothing"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the dialog is missing %q: %s", want, body)
+		}
+	}
+	if a.confirm.Danger {
+		t.Error("a journal under its limit is painted as a deletion")
+	}
+	drain(t, a, press(a, "n"))
+
+	// Over the limit, the dialog says the rotation will delete, and is red.
+	a.model.Storage.Bytes = 5 << 30
+	drain(t, a, press(a, "o"))
+	body = strings.Join(strings.Fields(a.confirm.Body), " ")
+	if !strings.Contains(body, "will delete entries") || !strings.Contains(body, "5.0G") {
+		t.Errorf("an over-limit rotation does not say it deletes: %s", body)
+	}
+	if !a.confirm.Danger {
+		t.Error("an over-limit rotation is not painted as a deletion")
+	}
+	drain(t, a, press(a, "y"))
+	if ran := backend.Ran(); len(ran) != 1 || backend.Preview(ran[0]) != "sudo -n journalctl --rotate" {
+		t.Errorf("ran %v", ran)
 	}
 }

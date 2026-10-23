@@ -575,12 +575,32 @@ func (f *Fake) apply(cmd logs.Command) (string, error) {
 	case argv[0] == "systemctl" && argv[1] == "restart":
 		return "", nil
 	case argv[0] == "journalctl" && argv[1] == "--rotate":
-		return "", nil
+		return f.rotate()
 	case argv[0] == "journalctl" && argv[1] == "--verify":
 		return "PASS: /var/log/journal/" + demoBootCurrent + "/system.journal", nil
 	case argv[0] == "journalctl" && strings.HasPrefix(argv[1], "--vacuum-"):
 		return f.vacuum(argv[1])
 	}
+	return "", nil
+}
+
+// rotate does what journald does right after a rotation: when the sample
+// machine is over its SystemMaxUse, the archived files go until it fits, so
+// the demo shows the same consequence the dialog warns about.
+func (f *Fake) rotate() (string, error) {
+	if _, over := RotateNote(f.storage); !over {
+		return "", nil
+	}
+	for _, setting := range f.storage.Conf {
+		if setting.Key != "SystemMaxUse" || setting.Default {
+			continue
+		}
+		if limit, ok := confSize(setting.Value); ok {
+			f.storage.Bytes = limit * 9 / 10
+		}
+	}
+	f.storage.DiskUsage = "Archived and active journals take up " +
+		FormatSize(f.storage.Bytes) + " in the file system."
 	return "", nil
 }
 
