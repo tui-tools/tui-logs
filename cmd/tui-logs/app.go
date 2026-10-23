@@ -10,6 +10,7 @@ import (
 	"github.com/tui-tools/tui-kit/compat"
 	"github.com/tui-tools/tui-kit/theme"
 	"github.com/tui-tools/tui-kit/ui"
+	"github.com/tui-tools/tui-logs/internal/journald"
 	"github.com/tui-tools/tui-logs/internal/logs"
 )
 
@@ -114,7 +115,11 @@ type app struct {
 
 	status     string
 	statusKind ui.StatusKind
-	loading    bool
+	// readingStatus is the "reading <filter>…" line a filter change put in
+	// the status line, so the read's answer can take it down again — and
+	// only it: a message that replaced it in the meantime stays.
+	readingStatus string
+	loading       bool
 	// loadFailed reports that the last read returned an error, so the empty
 	// state does not claim the machine simply has nothing to say.
 	loadFailed bool
@@ -293,6 +298,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.setStatus(ui.StatusError, msg.err.Error())
 			return a, nil
 		}
+		if a.readingStatus != "" && a.status == a.readingStatus {
+			// The read is done and its rows are on screen; a status line
+			// still saying "reading…" would claim it is not.
+			a.setStatus(ui.StatusInfo, "")
+		}
+		a.readingStatus = ""
 		a.model.Entries = msg.entries
 		a.model.Command = msg.command
 		a.model.Filter = a.filter
@@ -533,6 +544,7 @@ func (a *app) applyFilter(change func(*logs.Filter)) tea.Cmd {
 	a.filter = next
 	a.loading = true
 	a.setStatusf(ui.StatusInfo, "reading %s…", next.Label())
+	a.readingStatus = a.status
 	if a.following {
 		// A new filter is a new window, so the follow starts again from
 		// whatever that window's newest entry turns out to be.
@@ -910,7 +922,20 @@ func (a *app) confirmRotate() tea.Cmd {
 		return nil
 	}
 	a.screen = screenStorage
-	return a.buildAndConfirm("Rotate the journal", a.backend.BuildRotate)
+	cmd, err := a.backend.BuildRotate()
+	if err != nil {
+		a.setStatus(ui.StatusError, err.Error())
+		return nil
+	}
+	// What a rotation deletes depends on this machine's limits and on how
+	// far over them the journal is, so the body is built from the storage
+	// screen's numbers rather than from the command alone.
+	note, deletes := journald.RotateNote(a.model.Storage)
+	a.openConfirm("Rotate the journal", cmd.Description+".\n\n"+note, cmd)
+	if deletes {
+		a.confirm.Danger = true
+	}
+	return nil
 }
 
 // confirmVerify asks before verifying, because it is a read that can take
@@ -947,10 +972,6 @@ func actionBody(cmd logs.Command) string {
 			"the result usually lands under the limit rather than on it. What " +
 			"goes is gone: there is no undo, and no other copy unless " +
 			"something forwards the journal elsewhere."
-	case hasArg(cmd, "--rotate"):
-		return body + "\n\nNothing is deleted. The active files become " +
-			"archived ones under a new name, which is what a vacuum then has " +
-			"something to work with."
 	case hasArg(cmd, "--verify"):
 		return body + "\n\nThis reads every journal file on disk and checks " +
 			"its hashes. On a large journal it takes minutes, and the screen " +

@@ -316,17 +316,91 @@ func BuildVacuumTime(age string) (logs.Command, error) {
 
 // BuildRotate closes the active journal files and starts new ones.
 //
-// It loses nothing: what was active becomes archived, under a new name. It is
-// what makes an entry that is on disk stop being appended to, which is what a
-// vacuum then has something to work with — and it is the safe half of the
-// "the journal is enormous" answer.
+// The rotation itself removes no entry: what was active becomes archived,
+// under a new name. But a rotation is also when journald enforces its limits,
+// so straight after it journald deletes archived files, oldest first, until
+// the journal fits under SystemMaxUse, SystemKeepFree, SystemMaxFiles and
+// MaxRetentionSec — the files this rotation just closed included. On a
+// journal that is over a limit that was lowered, that is most of it.
+// RotateNote is what the confirm dialog says about it.
+//
+// It stays out of the danger colour on its own, because on a journal under
+// its limits it deletes nothing; the dialog paints it red when the numbers on
+// screen say the journal is over one.
 func BuildRotate() (logs.Command, error) {
 	return logs.Command{
-		Argv: []string{"journalctl", "--rotate"},
-		Description: "Close the active journal files and start new ones; " +
-			"nothing is deleted",
+		Argv:        []string{"journalctl", "--rotate"},
+		Description: "Close the active journal files and start new ones",
 		Destructive: false,
 	}, nil
+}
+
+// RotateNote says what a rotation can delete on this machine, and reports
+// whether it will: whether the journal is already over the size limit in
+// force, so the archived files are deleted as soon as the active ones join
+// them.
+//
+// The limits named are the ones journald.conf sets for the journal that is
+// in use — System* for a persistent one, Runtime* for one that lives in
+// /run — so the sentence names the number the reader can go and change.
+func RotateNote(storage logs.Storage) (string, bool) {
+	prefix := "System"
+	if !storage.Persistent {
+		prefix = "Runtime"
+	}
+	maxUseKey := prefix + "MaxUse"
+	limitKeys := []string{maxUseKey, prefix + "KeepFree", prefix + "MaxFiles",
+		KeyMaxRetentionSec}
+
+	var set []string
+	maxUse := ""
+	for _, key := range limitKeys {
+		for _, setting := range storage.Conf {
+			if setting.Key != key || setting.Default || setting.Value == "" {
+				continue
+			}
+			set = append(set, key+"="+setting.Value)
+			if key == maxUseKey {
+				maxUse = setting.Value
+			}
+		}
+	}
+
+	note := "The rotation itself removes no entry: the active files become " +
+		"archived ones under a new name. But rotating is also when journald " +
+		"enforces its limits: right after it, a journal that is over one " +
+		"loses archived files, oldest first, until it fits — the files just " +
+		"closed included."
+	switch {
+	case len(set) > 0:
+		note += " The limits set here: " + strings.Join(set, ", ") + "."
+	case len(storage.Conf) > 0:
+		note += " journald.conf sets no limit, so the compiled-in ones apply: " +
+			maxUseKey + " is 10% of the file system, at most 4G."
+	default:
+		note += " The limits in force could not be read."
+	}
+
+	limit, ok := confSize(maxUse)
+	if ok && limit > 0 && storage.Bytes > limit {
+		return note + " The journal takes up " + FormatSize(storage.Bytes) +
+			" now, over " + maxUseKey + "=" + maxUse + ", so this rotation " +
+			"will delete entries: what goes is gone.", true
+	}
+	return note + " A journal that is under its limits loses nothing.", false
+}
+
+// confSize reads a size as journald.conf writes it: a number of bytes, or one
+// with a K, M, G or T suffix, which journald reads as powers of 1024.
+func confSize(value string) (int64, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if bytes, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return bytes, bytes >= 0
+	}
+	return parseSize(strings.ToUpper(value))
 }
 
 // BuildVerify checks the journal's internal consistency.
