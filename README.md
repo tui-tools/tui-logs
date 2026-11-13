@@ -339,8 +339,15 @@ that already exists and `install` copies exactly that one.
 `SIGHUP`, and `systemctl reload` sends one — but the size and age limits are
 enforced from the moment the journal files are opened, so a reloaded journald
 goes on applying the limits it started with until something else rotates them.
-The restart is what makes the new numbers true now. It loses no entries: what
-arrives during it waits in the kernel's buffer.
+The restart is what makes the new numbers true now, and that cuts both ways.
+Nothing that arrives during it is lost: it waits in the kernel's buffer. But a
+journal that is over a lowered `SystemMaxUse` loses its oldest archived files
+as soon as journald starts again, until it fits. The dialog reads the
+journal's disk usage when you press `S` and says which case this is, with the
+numbers: how much the journal takes up, the limit it is held to, and roughly
+how much goes. Switching a persistent journal to `Storage=volatile` deletes
+nothing at startup, but every entry from then on is lost at the next reboot,
+and the dialog says that too.
 
 If this machine has no privilege escalation this tool can use, the drop-in
 cannot be installed and journald cannot be restarted, so `S` says so on the

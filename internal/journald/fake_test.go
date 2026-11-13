@@ -153,3 +153,50 @@ func TestTheDemoExportRefusesTheSamePathsTheRealOneDoes(t *testing.T) {
 		t.Errorf("an export reads as text, not as JSON: %s", plan.Source)
 	}
 }
+
+// TestTheDemoRestartEnforcesALoweredLimit: journald deletes archived files at
+// startup to get under a lowered SystemMaxUse, and the retention dialog now
+// says so. --demo has to show the same consequence, or the demo contradicts
+// the dialog it just showed.
+func TestTheDemoRestartEnforcesALoweredLimit(t *testing.T) {
+	ctx := context.Background()
+	fake := NewFake()
+	before, _ := fake.ReadStorage(ctx)
+	values := map[string]string{KeySystemMaxUse: "2G"}
+	plan, err := fake.BuildRetention(values)
+	if err != nil {
+		t.Fatalf("BuildRetention: %v", err)
+	}
+	if _, deletes := RetentionNote(before, values); !deletes {
+		t.Fatalf("the sample machine at %s is not over 2G", FormatSize(before.Bytes))
+	}
+	for _, cmd := range plan.Commands {
+		if _, err := fake.Run(ctx, cmd); err != nil {
+			t.Fatalf("Run %v: %v", cmd.Argv, err)
+		}
+	}
+	after, _ := fake.ReadStorage(ctx)
+	if after.Bytes >= 2<<30 || after.Bytes >= before.Bytes {
+		t.Errorf("the restart left the journal at %s (was %s), want it under 2G",
+			FormatSize(after.Bytes), FormatSize(before.Bytes))
+	}
+	if !strings.Contains(after.DiskUsage, FormatSize(after.Bytes)) {
+		t.Errorf("the disk usage line was not updated: %q", after.DiskUsage)
+	}
+}
+
+// TestTheDemoRestartUnderTheLimitDeletesNothing is the other half: a restart
+// on a journal under its limits leaves it as it was.
+func TestTheDemoRestartUnderTheLimitDeletesNothing(t *testing.T) {
+	ctx := context.Background()
+	fake := NewFake()
+	before, _ := fake.ReadStorage(ctx)
+	if _, err := fake.Run(ctx, BuildRestartJournald()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	after, _ := fake.ReadStorage(ctx)
+	if after.Bytes != before.Bytes {
+		t.Errorf("a restart under the limit moved the journal: %d then %d",
+			before.Bytes, after.Bytes)
+	}
+}

@@ -390,6 +390,126 @@ func RotateNote(storage logs.Storage) (string, bool) {
 	return note + " A journal that is under its limits loses nothing.", false
 }
 
+// RetentionNote says what the restart behind a retention change does to the
+// journal on this machine, and reports whether it deletes entries: whether
+// the journal is already over the size limit the answers put in force.
+//
+// journald enforces its limits when it opens the journal files, so the
+// restart that applies a lowered limit is also the moment the archived files
+// over it go, oldest first. The one thing the restart itself costs nothing
+// is the downtime: what arrives meanwhile waits in the kernel's buffer.
+//
+// The limit is the one that applies to the journal after the restart:
+// SystemMaxUse for a journal in /var/log/journal, taken from the answers and
+// falling back to the value in force, and RuntimeMaxUse, which the form does
+// not write, for one that lives in /run.
+func RetentionNote(storage logs.Storage, values map[string]string) (string, bool) {
+	const kept = "Nothing that arrives during the restart is lost: it waits " +
+		"in the kernel's buffer until journald is back."
+	target := strings.TrimSpace(values[KeyStorage])
+
+	// Moving a persistent journal to memory deletes nothing at startup, but
+	// it is the larger loss of the two, and it is not about a size.
+	if target == "volatile" && storage.Persistent {
+		return "Storage=volatile moves the journal into " + RuntimeJournalDir +
+			": the files in " + JournalDir + " stay on disk but are no longer " +
+			"written, and every entry from now on is lost at the next reboot. " +
+			kept, false
+	}
+
+	persistent := storage.Persistent
+	switch target {
+	case "persistent":
+		persistent = true
+	case "volatile":
+		persistent = false
+	}
+
+	var parts []string
+	limitKey, limitValue := "", ""
+	if persistent {
+		limitKey = KeySystemMaxUse
+		limitValue = strings.TrimSpace(values[KeySystemMaxUse])
+		if limitValue == "" {
+			limitValue = effectiveLimit(storage.Conf, KeySystemMaxUse)
+		}
+	} else {
+		limitKey = "RuntimeMaxUse"
+		limitValue = effectiveLimit(storage.Conf, limitKey)
+		if strings.TrimSpace(values[KeySystemMaxUse]) != "" {
+			parts = append(parts, "SystemMaxUse applies to a journal in "+
+				JournalDir+"; this one lives in "+RuntimeJournalDir+
+				", where RuntimeMaxUse is the size limit.")
+		}
+	}
+
+	limit, known := confSize(limitValue)
+	switch {
+	case !known || limit <= 0:
+		parts = append(parts, "With no "+limitKey+" set, journald applies "+
+			"its compiled-in limit (10% of the file system, at most 4G): "+
+			"if the journal is over the limit it starts with, it deletes its "+
+			"oldest archived files at startup until it fits, and what goes "+
+			"is gone.")
+	case storage.Bytes <= 0:
+		parts = append(parts, "The journal's current size could not be read: "+
+			"if the journal is over "+limitKey+"="+limitValue+", journald "+
+			"deletes its oldest archived files at startup until it fits, and "+
+			"what goes is gone.")
+	case storage.Bytes > limit:
+		parts = append(parts, "When journald starts again it deletes its "+
+			"oldest archived files until the journal is under "+limitKey+"="+
+			limitValue+". The journal takes up "+FormatSize(storage.Bytes)+
+			" now, so about "+FormatSize(storage.Bytes-limit)+" of entries "+
+			"go, and what goes is gone.")
+		return finishRetentionNote(parts, storage, values, kept), true
+	default:
+		parts = append(parts, "The journal takes up "+
+			FormatSize(storage.Bytes)+" now, under "+limitKey+"="+limitValue+
+			", so the size limit deletes nothing at startup.")
+	}
+	return finishRetentionNote(parts, storage, values, kept), false
+}
+
+// finishRetentionNote adds the age limit, when the answers change it, and the
+// sentence about the downtime that is true in every case.
+func finishRetentionNote(parts []string, storage logs.Storage,
+	values map[string]string, kept string) string {
+	age := strings.TrimSpace(values[KeyMaxRetentionSec])
+	if age != "" && age != inForce(storage.Conf, KeyMaxRetentionSec, true) {
+		// The age of the oldest entry is not known without another read, so
+		// this stays conditional.
+		parts = append(parts, "With MaxRetentionSec="+age+", archived files "+
+			"whose entries are all older than that are deleted at startup "+
+			"too, if there are any.")
+	}
+	parts = append(parts, kept)
+	return strings.Join(parts, " ")
+}
+
+// effectiveLimit is the value a key has in force, as long as it is still in
+// force after the drop-in this tool owns is rewritten. A value that came from
+// that drop-in is replaced by the answers, so it is not reported: when the
+// answer for it is empty, what takes its place is another file's value or the
+// compiled-in default, and the effective view cannot say which.
+func effectiveLimit(conf []logs.ConfSetting, key string) string {
+	return inForce(conf, key, false)
+}
+
+// inForce is the value a key has in the configuration in force, empty when
+// only the compiled-in default sets it. ownDropIn decides whether a value
+// that came from this tool's drop-in counts.
+func inForce(conf []logs.ConfSetting, key string, ownDropIn bool) string {
+	for _, setting := range conf {
+		if setting.Key != key || setting.Default ||
+			(!ownDropIn && setting.File == DropInPath) {
+			continue
+		}
+		return strings.TrimSpace(setting.Value)
+	}
+	return ""
+}
+
 // confSize reads a size as journald.conf writes it: a number of bytes, or one
 // with a K, M, G or T suffix, which journald reads as powers of 1024.
 func confSize(value string) (int64, bool) {

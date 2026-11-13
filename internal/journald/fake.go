@@ -573,7 +573,7 @@ func (f *Fake) apply(cmd logs.Command) (string, error) {
 	case argv[0] == "install" && argv[1] == "-m":
 		return f.installExport(argv)
 	case argv[0] == "systemctl" && argv[1] == "restart":
-		return "", nil
+		return f.restart()
 	case argv[0] == "journalctl" && argv[1] == "--rotate":
 		return f.rotate()
 	case argv[0] == "journalctl" && argv[1] == "--verify":
@@ -587,7 +587,18 @@ func (f *Fake) apply(cmd logs.Command) (string, error) {
 // rotate does what journald does right after a rotation: when the sample
 // machine is over its SystemMaxUse, the archived files go until it fits, so
 // the demo shows the same consequence the dialog warns about.
-func (f *Fake) rotate() (string, error) {
+func (f *Fake) rotate() (string, error) { return f.enforceLimits() }
+
+// restart does what journald does when it starts again: it opens the journal
+// files and enforces the limits in force, which after a retention change are
+// the ones the drop-in just set. A lowered SystemMaxUse shrinks the sample
+// machine here, the way the retention dialog says it will.
+func (f *Fake) restart() (string, error) { return f.enforceLimits() }
+
+// enforceLimits deletes the sample machine's archived files, oldest first,
+// until it fits under its SystemMaxUse — what journald does after a rotation
+// and at startup alike.
+func (f *Fake) enforceLimits() (string, error) {
 	if _, over := RotateNote(f.storage); !over {
 		return "", nil
 	}

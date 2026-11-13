@@ -39,15 +39,26 @@ type retentionForm struct {
 	step   int
 }
 
-// retentionMsg carries the drop-in read the form opens on.
+// retentionMsg carries the drop-in read the form opens on, and the journal's
+// size and configuration as they are now, which the confirm dialog judges the
+// restart by.
 type retentionMsg struct {
 	retention logs.Retention
-	err       error
+	storage   logs.Storage
+	// storageErr is a failed storage read. It does not stop the form: the
+	// dialog falls back to the numbers the storage screen last read.
+	storageErr error
+	err        error
 }
 
 // openRetentionForm reads the drop-in this tool owns, then asks the first
 // question. The read is in the background because it asks systemd-analyze
 // what the configuration in force is, which is a process like any other.
+//
+// The journal's disk usage is read again at the same time. Whether the
+// restart deletes entries depends on it, and the number the storage screen
+// shows is as old as the last load: a vacuum run from another terminal since
+// then would make the dialog judge a journal that is no longer there.
 func (a *app) openRetentionForm() tea.Cmd {
 	if !a.caps.SupportsRetention {
 		if reason, ok := a.caps.Reason(logs.CapRetention); ok {
@@ -65,7 +76,12 @@ func (a *app) openRetentionForm() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 		defer cancel()
 		retention, err := backend.ReadRetention(ctx)
-		return retentionMsg{retention: retention, err: err}
+		if err != nil {
+			return retentionMsg{err: err}
+		}
+		storage, storageErr := backend.ReadStorage(ctx)
+		return retentionMsg{retention: retention, storage: storage,
+			storageErr: storageErr}
 	}
 }
 
@@ -80,6 +96,9 @@ func (a *app) onRetention(msg retentionMsg) tea.Cmd {
 		a.setStatusf(ui.StatusWarn, "%s could not be read: %s",
 			msg.retention.Path, msg.retention.Unavailable)
 		return nil
+	}
+	if msg.storageErr == nil {
+		a.model.Storage = msg.storage
 	}
 	a.retention = &retentionForm{
 		seed:   msg.retention,
@@ -162,21 +181,30 @@ func (a *app) stageRetention() tea.Cmd {
 		a.setStatus(ui.StatusError, err.Error())
 		return nil
 	}
-	a.openRetentionConfirm(plan)
+	a.openRetentionConfirm(plan, form.values)
 	return nil
 }
 
 // openRetentionConfirm shows what the file will say, as a diff, and the two
 // commands that make it true.
-func (a *app) openRetentionConfirm(retention logs.RetentionPlan) {
+//
+// Between the explanation and the diff is what the restart does to this
+// journal. journald enforces the limits as it opens the journal files, so a
+// restart that applies a lowered SystemMaxUse deletes the archived files over
+// it on the spot; the note says so, with the numbers, when the journal is
+// over the new limit (issue #28). The dialog is in the danger colour either
+// way, because it installs a file as root and restarts a system service.
+func (a *app) openRetentionConfirm(retention logs.RetentionPlan,
+	values map[string]string) {
 	title := "Write " + retention.Path
 	body := "The journal's retention is set by this file, which belongs to " +
 		"tui-logs and holds nothing else. Restarting " + journald.JournaldUnit +
 		" is what applies it: journald re-reads its configuration on SIGHUP, " +
 		"but the size and age limits are enforced from the moment the journal " +
 		"files are opened, so a reload alone would leave the old limits in " +
-		"force until something else rotated them. The restart loses no entries " +
-		"— what arrives during it waits in the kernel's buffer."
+		"force until something else rotated them."
+	note, _ := journald.RetentionNote(a.model.Storage, values)
+	body += "\n\n" + note
 	if retention.Warning != "" {
 		body += "\n\n" + retention.Warning
 	}
