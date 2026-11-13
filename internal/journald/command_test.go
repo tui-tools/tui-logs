@@ -424,3 +424,129 @@ func TestConfSizeReadsJournaldConfSizes(t *testing.T) {
 		}
 	}
 }
+
+func TestRetentionNoteSaysWhatTheRestartDeletes(t *testing.T) {
+	const mib = int64(1) << 20
+	setTo := func(key, value string) logs.ConfSetting {
+		return logs.ConfSetting{Key: key, Value: value,
+			File: "/etc/systemd/journald.conf.d/90-admin.conf", Line: 2}
+	}
+	ours := func(key, value string) logs.ConfSetting {
+		return logs.ConfSetting{Key: key, Value: value, File: DropInPath, Line: 3}
+	}
+	answers := func(maxUse, retention, storage string) map[string]string {
+		return map[string]string{KeySystemMaxUse: maxUse,
+			KeyMaxRetentionSec: retention, KeyStorage: storage}
+	}
+
+	cases := []struct {
+		name     string
+		storage  logs.Storage
+		values   map[string]string
+		deletes  bool
+		contains []string
+		absent   []string
+	}{
+		{
+			// The issue: 32M of journal, the limit lowered to 16M.
+			name:    "over the new limit",
+			storage: storageWith(true, 32*mib, setTo("SystemMaxUse", "4G")),
+			values:  answers("16M", "", "persistent"),
+			deletes: true,
+			contains: []string{"deletes its oldest archived files",
+				"SystemMaxUse=16M", "32.0M", "about 16.0M", "what goes is gone"},
+		},
+		{
+			name:     "under the new limit",
+			storage:  storageWith(true, 10*mib, setTo("SystemMaxUse", "4G")),
+			values:   answers("16M", "", ""),
+			contains: []string{"10.0M", "under SystemMaxUse=16M", "deletes nothing"},
+			absent:   []string{"what goes is gone"},
+		},
+		{
+			name:     "an empty answer falls back to the limit in force",
+			storage:  storageWith(true, 64*mib, setTo("SystemMaxUse", "48M")),
+			values:   answers("", "", ""),
+			deletes:  true,
+			contains: []string{"SystemMaxUse=48M", "64.0M"},
+		},
+		{
+			// Clearing the key this tool wrote hands the limit back to
+			// whatever else sets it, which the effective view cannot say.
+			name:     "clearing this tool's own limit leaves it unknown",
+			storage:  storageWith(true, 64*mib, ours("SystemMaxUse", "48M")),
+			values:   answers("", "", ""),
+			contains: []string{"compiled-in", "if the journal is over"},
+			absent:   []string{"SystemMaxUse=48M"},
+		},
+		{
+			name: "a journal in /run is held to RuntimeMaxUse",
+			storage: storageWith(false, 64*mib, setTo("RuntimeMaxUse", "32M"),
+				setTo("SystemMaxUse", "1G")),
+			values:   answers("2G", "", "auto"),
+			deletes:  true,
+			contains: []string{"RuntimeMaxUse=32M", "64.0M", "/run/log/journal"},
+			absent:   []string{"under SystemMaxUse"},
+		},
+		{
+			name:     "switching to persistent is held to the new SystemMaxUse",
+			storage:  storageWith(false, 32*mib, setTo("RuntimeMaxUse", "64M")),
+			values:   answers("16M", "", "persistent"),
+			deletes:  true,
+			contains: []string{"SystemMaxUse=16M", "32.0M"},
+		},
+		{
+			name:     "unknown usage",
+			storage:  storageWith(true, 0, setTo("SystemMaxUse", "4G")),
+			values:   answers("16M", "", ""),
+			contains: []string{"if the journal is over", "SystemMaxUse=16M"},
+		},
+		{
+			name: "a new MaxRetentionSec is named as conditional",
+			storage: storageWith(true, 10*mib, setTo("SystemMaxUse", "4G"),
+				setTo("MaxRetentionSec", "1year")),
+			values:   answers("4G", "30d", ""),
+			contains: []string{"MaxRetentionSec=30d", "older than"},
+		},
+		{
+			name: "an unchanged MaxRetentionSec says nothing new",
+			storage: storageWith(true, 10*mib, setTo("SystemMaxUse", "4G"),
+				setTo("MaxRetentionSec", "1year")),
+			values: answers("4G", "1year", ""),
+			absent: []string{"older than"},
+		},
+		{
+			name:    "switching a persistent journal to volatile",
+			storage: storageWith(true, 32*mib, setTo("SystemMaxUse", "4G")),
+			values:  answers("4G", "", "volatile"),
+			contains: []string{"Storage=volatile", JournalDir,
+				"lost at the next reboot"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			note, deletes := RetentionNote(tc.storage, tc.values)
+			if deletes != tc.deletes {
+				t.Errorf("deletes = %v, want %v: %s", deletes, tc.deletes, note)
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(note, want) {
+					t.Errorf("the note is missing %q: %s", want, note)
+				}
+			}
+			for _, unwanted := range tc.absent {
+				if strings.Contains(note, unwanted) {
+					t.Errorf("the note should not say %q: %s", unwanted, note)
+				}
+			}
+			// The half of the old sentence that is true is always kept, and
+			// the half that was not true is never said.
+			if !strings.Contains(note, "kernel's buffer") {
+				t.Errorf("the note drops the kernel buffer: %s", note)
+			}
+			if strings.Contains(note, "loses no entries") {
+				t.Errorf("the note promises no entries are lost: %s", note)
+			}
+		})
+	}
+}

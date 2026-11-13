@@ -223,3 +223,89 @@ func TestANonPersistentJournalPointsAtTheFormRatherThanAtAShell(t *testing.T) {
 		t.Errorf("the note does not point at the form: %q", journald.NotPersistentNote)
 	}
 }
+
+// answerRetention fills in the three prompts and lands on the dialog.
+func answerRetentionForm(t *testing.T, a *app, maxUse, maxAge, storage string) {
+	t.Helper()
+	openRetention(t, a)
+	typeInto(t, a, maxUse)
+	typeInto(t, a, maxAge)
+	for i, option := range a.picker.Options {
+		if option == storage {
+			a.picker.Cursor = i
+		}
+	}
+	drain(t, a, press(a, "enter"))
+	if a.mode != modeConfirm {
+		t.Fatalf("the form ended in mode %v, want the dialog (status %q)",
+			a.mode, a.status)
+	}
+}
+
+// flat is the dialog body with its wrapping undone, so a sentence can be
+// looked for whatever width the dialog broke it at.
+func flat(body string) string { return strings.Join(strings.Fields(body), " ") }
+
+// Issue #28: the dialog said the restart loses no entries, and then journald
+// deleted the archived files over the lowered limit as soon as it started.
+func TestRetentionDialogSaysTheRestartDeletesOverALoweredLimit(t *testing.T) {
+	a, _ := newTestApp(t)
+	// The sample journal takes up 3.9G under SystemMaxUse=4G.
+	answerRetentionForm(t, a, "2G", "", "persistent")
+
+	body := flat(a.confirm.Body)
+	for _, want := range []string{"deletes its oldest archived files",
+		"SystemMaxUse=2G", "3.9G", "what goes is gone", "kernel's buffer"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the dialog does not say %q:\n%s", want, a.confirm.Body)
+		}
+	}
+	if strings.Contains(body, "loses no entries") {
+		t.Errorf("the dialog still promises no entries are lost:\n%s", a.confirm.Body)
+	}
+	if !a.confirm.Danger {
+		t.Error("a dialog for a restart that deletes entries is not in the danger colour")
+	}
+	// The note comes before the diff, which stays the last thing shown.
+	if strings.Index(body, "deletes its oldest") > strings.Index(body, "+SystemMaxUse=2G") {
+		t.Errorf("the note is below the diff:\n%s", a.confirm.Body)
+	}
+}
+
+func TestRetentionDialogUnderTheLimitSaysNothingIsDeleted(t *testing.T) {
+	a, _ := newTestApp(t)
+	answerRetentionForm(t, a, "8G", "", "persistent")
+
+	body := flat(a.confirm.Body)
+	for _, want := range []string{"under SystemMaxUse=8G", "deletes nothing",
+		"kernel's buffer"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the dialog does not say %q:\n%s", want, a.confirm.Body)
+		}
+	}
+	for _, unwanted := range []string{"what goes is gone", "loses no entries"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("the dialog says %q:\n%s", unwanted, a.confirm.Body)
+		}
+	}
+}
+
+// The numbers the note is built from are re-read when the form opens, so a
+// journal that changed since the screen was loaded is judged as it is now.
+func TestRetentionDialogUsesTheJournalSizeAsItIsNow(t *testing.T) {
+	a, backend := newTestApp(t)
+	// Something else vacuums the journal down to 450M behind the app's back.
+	vacuum, err := backend.BuildVacuumSize("500M")
+	if err != nil {
+		t.Fatalf("BuildVacuumSize: %v", err)
+	}
+	if _, err := backend.Run(t.Context(), vacuum); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	answerRetentionForm(t, a, "2G", "", "persistent")
+
+	body := flat(a.confirm.Body)
+	if !strings.Contains(body, "450.0M") || !strings.Contains(body, "deletes nothing") {
+		t.Errorf("the dialog was built from stale numbers:\n%s", a.confirm.Body)
+	}
+}
