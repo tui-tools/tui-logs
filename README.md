@@ -674,7 +674,7 @@ hidden; one below the minimum is marked as such and the tool still runs.
 | Binary | `journalctl` |
 | Version read with | `journalctl --version` |
 | Minimum | 239 |
-| Tested | `255`, `259`, `261` |
+| Tested | `255`, `259`, `261`, `262` |
 | Version-gated features | `list-boots-json` (since 252) |
 
 | Versions | What changes |

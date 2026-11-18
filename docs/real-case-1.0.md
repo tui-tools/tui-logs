@@ -58,3 +58,30 @@ On the lab machine:
 
 Export (`x`), rotate (`o`) and verify (`y`) were not exercised on these
 machines; the guide on tui.tools walks through them on an Ubuntu container.
+
+## Second run: tui-kit v0.5.0, on all three families
+
+tui-kit v0.5.0 changed how a command runs as root: it is looked up only in the
+system directories and must be owned by root, it starts from a minimal
+environment, and as root the tool refuses configuration files root does not
+own and `TUI_<TOOL>_*` variables carried in from sudo, su, doas or pkexec. So
+the work above was repeated on 2026-11-18 with a static build of this branch's
+head, `bd15aa5` (main with tui-kit v0.5.0 and Go 1.27.4 merged in),
+installed root-owned as `/usr/local/bin/tui-logs`, on fresh tui-lab machines on
+the project's own server: Ubuntu 24.04.5 (apt), Fedora 44 (dnf) and Omarchy
+Server 4.0.1 (pacman), lab VMs again, not production hosts.
+
+- The smoke test passed on all three as the ordinary user `lab`, who
+  escalates with `sudo -n`, and again as root (`sudo env TUI_LAB_BIN=<binary> bash smoke.sh`):
+  23/23 on each, as user and as root. On Omarchy Server the escalation and every command it runs were
+  found through `/usr/sbin`, which the new kit trusts; nothing was refused.
+- The main change was driven through the TUI in tmux once per family as
+  `lab` and once as root, and checked on the machine afterwards:
+  `SystemMaxUse` (300M as `lab`, 250M as root) and `MaxRetentionSec` written
+  through `S`, read back from `systemd-analyze cat-config`, on all three.
+- tui-update then upgraded all three machines (see its report), Omarchy
+  Server to 4.0.2. The smoke test passed again on the upgraded machines, and
+  the new versions it observed are the 2026-11-18 lines in
+  `compat/results.jsonl` (journald 262 on Omarchy Server 4.0.2).
+
+No new finding.
